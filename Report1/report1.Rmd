@@ -1,0 +1,861 @@
+---
+title: "Statistical learning"
+subtitle: "Report 1"
+author: "Maciej Szczutko"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, fig.pos = "H", fig.dim = c(6,3.5), fig.align = "center", message = F, warning = F)
+source("prettyMatrixPrinter.R")
+options(scipen = 1, digits = 2)
+library(ggplot2)
+library(ellipse)
+library(gridExtra)
+library(kableExtra)
+library(corrplot)
+library(mvtnorm)
+library(dplyr)
+by_Row = 1
+by_Col = 2
+```
+
+# Exercises
+
+## Ex1
+
+$$
+\mathbf{A}=\left[\begin{array}{rr}
+3 & -1 \\
+-1 & 3
+\end{array}\right]
+$$
+
+  1. Is $A$ is symmetric? Yes. It's trivial.
+  2. Spectral decomposition.
+  
+  Lets use fact the characteristic polynomial for 2x2 matrix can be written as:
+  $$\lambda^2 - tr(A)\lambda + det(A).$$
+  So we get $p_A(\lambda) = \lambda^2-6\lambda+8.$ Then we easily find roots $\lambda_1=2$ and $\lambda_2=4$.
+  
+  Solving equation $$Ax=\lambda_i x$$ for $i=1,2$ we obtain $e_1=(1,1)^T$ and $e_2=(-1, 1)^T$ for $\lambda_1, \lambda_2$ respectively. We can norm vector to unity or just multiply one of matrix by square of scaling factor. 
+  
+  Then spectal decomposition is:
+  
+  $$A=\left(\begin{array}{cc}1 & -1 \\ 1 & 1\end{array}\right) \cdot\left(\begin{array}{cc}2 & 0 \\ 0 & 4\end{array}\right) \cdot\left(\begin{array}{cc}\frac{1}{2} & \frac{1}{2} \\ \frac{-1}{2} & \frac{1}{2}\end{array}\right)$$
+  
+  3. One way of writing the spectral decomposition of $\mathbf{A}$ is
+  
+  $$
+\lambda_1 \mathbf{e}_1 \mathbf{e}_1^T+\lambda_2 \mathbf{e}_2 \mathbf{e}_2^T
+$$
+
+This is just direct sum of subspace spanned by eigen vectors. The first component represent space spanned by $\lambda_1$ and second one by another one.
+
+  4. Use the spectral decomposition of $A$ given above and find $\sqrt{A}$. Check that the matrix you found satisfies
+  
+  $$
+\sqrt{\mathrm{A}} \sqrt{\mathrm{A}}=\mathrm{A}
+$$
+
+  $$A=\left(\begin{array}{cc}1 & -1 \\ 1 & 1\end{array}\right) \cdot\left(\begin{array}{cc}2 & 0 \\ 0 & 4\end{array}\right) \cdot\left(\begin{array}{cc}\frac{1}{2} & \frac{1}{2} \\ \frac{-1}{2} & \frac{1}{2}\end{array}\right).$$
+  
+  Because $A$ has representation $P \Lambda P^{-1}$ the $\sqrt{A} = \left(\begin{array}{cc}1 & -1 \\ 1 & 1\end{array}\right) \cdot\left(\begin{array}{cc}\sqrt{2} & 0 \\ 0 & 2\end{array}\right) \cdot\left(\begin{array}{cc}\frac{1}{2} & \frac{1}{2} \\ \frac{-1}{2} & \frac{1}{2}\end{array}\right)$.
+  
+  From spectral decomposition we can easily check that 
+  $$
+\begin{aligned}
+\sqrt{A} \sqrt{A} & =P \Lambda^{\frac{1}{2}} P^{-1} P \Lambda^{\frac{1}{2}} P^{-1}= \\
+& =P \Lambda^{\frac{1}{2}} \Lambda^{\frac{1}{2}} P^{-1}=P \Lambda P = A.
+\end{aligned}
+$$
+
+  
+## Ex2  
+
+Consider the spectral decomposition of a positive definite matrix as given in Lecture 1:
+
+$$
+\mathbf{A}=\mathbf{P} \boldsymbol{\Lambda} \mathbf{P}^T
+$$
+
+The columns of $\mathbf{P}$ are made of eigenvectors $\mathbf{e}_i, i=1, \ldots, n$ and they are orthonormalized, i.e. their lengths are one and they are orthogonal (peripendicular) one to another. The diagonal matrix $\boldsymbol{\Lambda}$ has the corresponding (positive) eigenvalues on the diagonal. Provide argument for the following
+
+
+  1. $\mathbf{P}^T=\mathbf{P}^{-1}$
+  
+  Let the $<u,v>$ be a standard scalar product of $2$ vectors in $R^n$. Lets use $\delta_{i j}$ for Knocker delta. We can write $P = (C_1, C_2, \ldots, C_n)$ where $C_i \in R^n$. Then $P^T = (C^T_1, C^T_2, \ldots, C^T_n)$.
+  
+  From orthogonality we have $$\left\langle C_i, C_j\right\rangle=\delta_{i j}$$.
+  
+  $$P^T P=\left(\left\langle C_i, C_j\right\rangle\right)_{1 \leq i, j \leq n}=I_n$$
+  
+  2. Determinant of $\boldsymbol{\Lambda}$ is equal to the product of the terms on the diagonal.
+  
+  This is consequences of fact the determinant is product of eigen values. For diagonal matrices the eigen values are just the element on the diagonals.
+  
+  3. Dederminant of $\mathbf{A}$ is the same as that of $\boldsymbol{\Lambda}$.
+  
+  $$
+\begin{aligned}
+& \operatorname{det}(A)=\operatorname{det}\left(P \Lambda P^{-1}\right)= \\
+& =\operatorname{det}(P)  \operatorname{det}(\Lambda) \operatorname{det}\left(P^{-1}\right)= \\
+& =\operatorname{det}(PP^{-1})\operatorname{det}(\Lambda) = \operatorname{det}(\Lambda)
+\end{aligned}
+$$
+  
+  4. Find the inverse matrix to $\boldsymbol{\Lambda}$, i.e. $\boldsymbol{\Lambda}^{-1}$.
+  
+  For diagonal matrix multiplication simplify to Hadamard product (element-wise product). Using this we can easily guess that $\Lambda^{-1}$ is just  
+  
+$$
+\begin{bmatrix}\frac{1}{\lambda_1} & & \\ & \ddots & \\ & & \frac{1}{\lambda_n}\end{bmatrix}.
+$$
+
+  5.  A simple way to determine the inverse of a matrix A from its spectral decomposition is through $\mathbf{A}^{-1}=\mathbf{P} \Lambda^{-1} \mathbf{P}^T.$
+  
+  Verify that the right hand side of the above indeed define the inverse of $\mathbf{A}$.
+  
+  $$
+A \cdot P \Lambda^{-1} P^{\top}=(P \Lambda P^{\top} )P \Lambda^{-1} P^{\top} = P \Lambda (P^{\top} P ) \Lambda^{-1} P^{\top} = P (\Lambda  \Lambda^{-1}) P^{\top} = I
+$$
+
+If inverse of A exist is must be this matrix.
+  
+  6. All satisfies :)
+  
+## Ex 3
+
+
+L - length distribution 
+W - weight distribution
+
+$\mu_L = 49.8 \quad \sigma_L^2  = 2.5^2=6.25 \quad \mu_W = 3343 \quad \sigma_W^2  = 528^2=`r 528^2`$
+
+```{r parameter}
+mu_l <- 49.8
+mu_w <- 3343
+
+sigma_l <- 2.5^2
+sigma_w <- 528^2
+
+cov_wl <- 0.75
+
+mu <- matrix(c(mu_w, mu_l), nrow=2, ncol=1)
+```
+
+
+  1. Write explicitly the parameters $\boldsymbol{\mu}$ and $\boldsymbol{\Sigma}$.
+`r mu`
+
+
+```{r covariance-matrix}
+symetric_element <- cov_wl * sqrt(sigma_l)*sqrt(sigma_w)
+sigma_matrix <- matrix(c(sigma_w, symetric_element, symetric_element, sigma_l), 2,2)
+```
+
+$$
+\Sigma=\left(\begin{array}{cc}
+\sigma_W^2 & corr(W,L)\sigma_W\sigma_L \\
+corr(L, W)\sigma_W\sigma_L & \sigma_L^2
+\end{array}\right)=
+$$
+$\Sigma$=`r sigma_matrix`
+
+  2. Density
+  
+  $$
+f(\mathbf{x})=\frac{1}{(2 \pi)^{p/ 2} \sqrt{\operatorname{det}(\boldsymbol{\Sigma})}} \exp \left(-\frac{1}{2}(\mathbf{x}-\boldsymbol{\mu})^T \boldsymbol{\Sigma}^{-1}(\mathbf{x}-\boldsymbol{\mu})\right)
+$$
+
+  $$
+f(\mathbf{x})=\frac{1}{(2 \pi) `r round(sqrt(det(sigma_matrix)),3)`} \exp \left(-\frac{1}{2}(\mathbf{x}-\left(\begin{array}{l}
+3343 \\
+49.8
+\end{array}\right))^T \left(\begin{array}{cc}
+0 & -0.001 \\
+-0.001 & 0.366
+\end{array}\right) (\mathbf{x}-\left(\begin{array}{l}
+3343 \\
+49.8
+\end{array}\right))\right)
+$$
+
+
+  
+  
+  3. Find eigenvalues and eigenvectors of the covariance matrix
+  
+  
+```{r spectral-decomposition-exercise}
+
+
+spectral_decomposition <- eigen(sigma_matrix, symmetric = TRUE)
+
+V <- diag(spectral_decomposition$values)
+P <- as.matrix(spectral_decomposition$vectors)
+```
+
+$\Sigma = PVP^{T}$ where $V=$`r V` and $P=$`r P`.
+
+
+```{r ellipses-exercise}
+levels <- c(0.39, seq(0.75, 0.95, by = 0.1))
+ellipse_scores <- list()
+
+for (level in levels) {
+  ellipse_data <- as.data.frame(ellipse(
+    x = sigma_matrix,
+    centre = as.vector(mu),
+    level = level
+  ))
+  ellipse_data$group <- paste("Level = ", level)
+  ellipse_scores[[length(ellipse_scores) + 1]] <- ellipse_data
+}
+
+combined_data <- do.call(rbind, ellipse_scores)
+```
+
+```{r eigen-vectors}
+
+vector_data1 <- data.frame(
+  x = mu[1],       
+  y = mu[2],      
+  xend =   (mu[1]+spectral_decomposition$vectors[1,1]*sqrt(spectral_decomposition$values[1])),    
+  yend =  (mu[2]+spectral_decomposition$vectors[2,1]*sqrt(spectral_decomposition$values[1]))     
+)
+
+vector_data2 <- data.frame(
+  x = mu[1],      
+  y = mu[2],      
+  xend =   (mu[1]+spectral_decomposition$vectors[1,2]*sqrt(spectral_decomposition$values[2])),    
+  yend =  (mu[2]+spectral_decomposition$vectors[2,2]*sqrt(spectral_decomposition$values[2]))     
+)
+
+```
+
+
+```{r ellipses-plot-exercise}
+ellipses_exercises <- ggplot() +
+  geom_path(data = combined_data, aes(x, y, color = group)) +
+  ggtitle("Ellipses for constant level")+
+  geom_segment(data = vector_data1, aes(x = x, y = y, xend = xend, yend = yend), color = "purple")+
+  geom_segment(data = vector_data2, aes(x = x, y = y, xend = xend, yend = yend), color = "purple")
+ellipses_exercises
+```
+
+I don't know how to better represent this vectors. They look for not orthogonal due graph proportion. But we know the scaling factor is $\chi^2_{df}(\alpha)$ so we can select such level that this factor will be $1$. Then we clearly see that eigenvector point axes direction.
+
+  4. How many parameters characterize a bivariate normal distribution? 
+  
+  The $p$-dimensional normal distribution is characterized by $2p + {{p}\choose{2}}$. $p$ means, $p$ variances and correlations.
+  
+    
+  5. This one dimensional normal distribution. $L \sim N(`r mu_l`, `r sigma_l`)$.
+  
+  6. The best guess will be $`r mu_l` \pm `r 3*round(sqrt(sigma_l),3)`$[cm] by three $\sigma$ rule.
+  
+  
+
+## Ex 4 (conditional distribution)
+  
+  1. What is the distribution of $L$ given this additional information? Give its name and parameters.
+  It is conditional distribution $L|W$. From lecture we know it will be also normal distribution. For bivariate normal distribution the mean and variance are given as below:
+  $$
+\begin{gathered}
+E(X \mid Y=y)=\mu_X+\sigma_X \frac{y-\mu_Y}{\sigma_Y} \\
+\operatorname{Var}(X \mid Y=y)=\sigma_X^2\left(1-\rho^2\right)
+\end{gathered}
+$$
+
+```{r params-for-conditional}
+child_weight <- 4025
+
+conditional_mu <-  mu_l + sqrt(sigma_l) * cov_wl *(child_weight - mu_w) / sqrt(sigma_w)
+conditional_var <-  sigma_l * (1 - cov_wl^2)
+```
+
+$$L|W \sim N(`r conditional_mu` , `r conditional_var`)$$
+  
+  
+  2. Improve your previous guess and provide with accuracy limits.
+  
+  The best guess will be $`r conditional_mu` \pm `r 3*round(sqrt(conditional_var),3)`$[cm] by three $\sigma$ rule.
+  
+  3. Compare the answers from this and previous problems and comment how additional information affected the prediction value and accuracy.
+  
+  From the conditional variance formula we can see that the width of interval will stayed the same iff the variables are uncorrelated. Otherwise we improve the "prediction". This is beacuse we lower the variance ($p \in (0,1)$) and the width of interval getting shorter. 
+  
+  
+
+## Ex 5
+
+Problem 5 Let $\mathbf{X}_1, \mathbf{X}_2$, and $\mathbf{X}_3$ be independent $\mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ random vectors of a dimension $p$.
+  
+
+  1. Find the distribution of each of the following vectors:
+  $$
+  \begin{aligned}
+  & \mathbf{V}_1=\frac{1}{4} \mathbf{X}_1-\frac{1}{2} \mathbf{X}_2+\frac{1}{4} \mathbf{X}_3 \\
+  & \mathbf{V}_2=\frac{1}{4} \mathbf{X}_1-\frac{1}{2} \mathbf{X}_2-\frac{1}{4} \mathbf{X}_3
+  \end{aligned}
+  $$
+  
+  Let use the fact if $X \sim \mathcal{N}\left(\mu_X, \Sigma_X\right)$ and $Y \sim \mathcal{N}\left(\mu_Y, \Sigma_Y\right)$ then $X+Y \sim \mathcal{N}\left(\mu_X+\mu_Y, \Sigma_X+\Sigma_Y\right)$ and $-Y \sim \mathcal{N}\left(-\mu_Y, \Sigma_Y\right)$. Also we can use how the formula for linear transformation for normal. $$
+Z=A X+b \sim \mathcal{N}\left(A \mu+b, A \Sigma A^{\mathrm{T}}\right) (*)
+$$
+  
+  Using this we obtain
+  $$
+\mu_1=\frac{1}{4} \mu-\frac{1}{2} \mu+\frac{1}{4} \mu=0 \text { and } \mu_2=\frac{1}{4} \mu-\frac{1}{2} \mu-\frac{1}{4} \mu=-\frac{1}{2} \mu
+$$
+Multiplying by scalar scale covariance matrix by square $(*)$.  
+  
+$$
+\Sigma_1=\frac{1}{16} \Sigma+\frac{1}{4} \Sigma+\frac{1}{16} \Sigma=\frac{3}{8}\Sigma \text { and } \Sigma_1=\frac{1}{16} \Sigma+\frac{1}{4} \Sigma+\frac{1}{16} \Sigma=\frac{3}{8}\Sigma
+$$
+
+  
+  
+  2. Find the joint distribution of the above vectors.
+  
+  Let's write those vectors as single one of dimension $3p$. $$
+X=\left(\begin{array}{l}
+X_1 \\
+X_2 \\
+X_3
+\end{array}\right)
+$$
+  And define matrix 
+  $$
+A=\left(\begin{array}{ccc}
+\frac{1}{4} & -\frac{1}{2} & \frac{1}{4} \\
+\frac{1}{4} & -\frac{1}{2} & -\frac{1}{4}
+\end{array}\right)
+$$
+  Then we can easily calculate $\mu$ and $\Sigma$ from $(*)$.
+
+
+The mean will be simply $$\left(\begin{array}{c}
+0 \\
+-\frac{1}{2} \mu
+\end{array}\right)$$
+
+$$
+B\Sigma_{3p} B^T = 
+\left(\begin{array}{ll}
+\frac{3}{8} \Sigma_p & \frac{1}{4} \Sigma_p \\
+\frac{1}{4} \Sigma_p & \frac{3}{8} \Sigma_p
+\end{array}\right)
+$$
+
+
+$$
+\left(\begin{array}{l}
+v_1 \\
+v_2
+\end{array}\right) \sim N_{2p}\left(\left(\begin{array}{c}
+0 \\
+-\frac{1}{2} \mu
+\end{array}\right), 
+\left(\begin{array}{ll}
+\frac{3}{8} \Sigma_p & \frac{1}{4} \Sigma_p \\
+\frac{1}{4} \Sigma_p & \frac{3}{8} \Sigma_p
+\end{array}\right)
+\right)
+$$
+
+\newpage
+
+# Project part 1
+
+```{r read-WeightLength}
+ WeightLength <- read.delim("WeightLength.txt")
+```
+
+```{r stats-WeightLength}
+
+mean_L <- round(mean(WeightLength$Length),3)
+mean_W <- round(mean(WeightLength$Weight),3)
+
+var_L <- round(var(WeightLength$Length),3)
+var_W <- round(var(WeightLength$Weight),3)
+
+cov_WL <- round(cov(WeightLength$Length, WeightLength$Weight),3)
+```
+
+## 1 Sample statistic
+
+| i  | $\mu_i$  | $Var$  | $\rho$  |
+|----|----|---|---|
+| L  | `r mean_L`  | `r var_L`  | `r cov_WL`  |
+| W  | `r mean_W`  | `r var_W`  | `r cov_WL`  |
+
+## 2 Normality 
+
+I will verify normality through histogram and qq-plots inspections.
+
+```{r historams, fig.cap="Historams of marignals" , fig.dim=c(6,2.5)}
+# TO DO - ADD LABELS, CAPTION AND ADJUST BINS
+p1 <- ggplot(data = WeightLength,  aes(x=Weight))+
+  geom_histogram(color="grey", fill="blue", binwidth = 75)+
+  theme_minimal()
+
+p2 <- ggplot(data = WeightLength,  aes(x=Length))+
+  geom_histogram(color="grey", fill="orange", binwidth = 1)+
+  theme_minimal()
+
+grid.arrange(p1, p2, nrow  = 1, ncol = 2)
+```
+
+Histograms for *Weight* and *Length* seems to be symmetric without heavy tails. Let's take a further look at the qq-plots 
+
+
+```{r qq-plots, fig.dim=c(6,3)}
+# TO DO - ADD LABELS, CAPTION 
+p3 <- ggplot(data = WeightLength, aes(sample=Weight)) +
+  stat_qq(color='blue') + 
+  stat_qq_line()
+
+p4 <- ggplot(data = WeightLength, aes(sample=Length)) +
+  stat_qq(color='orange') + 
+  stat_qq_line()
+
+grid.arrange(p3,p4, nrow  = 1, ncol = 2)
+```
+
+The sample quantiles are very close to the theoretical ones. We can assume the marginals from sample comes from normal distribution.
+
+## 3 Find the ellipsoids that would serve classification regions for scores as described above.
+
+According to method description we need to plot ellipses for two levels ($0.95$ and $0.75$). On the plot the area for given score are marked with colour. Each sample inside ellipse represented level $0.75$ got score $2$. If it outside $0.75$, but inside $0.95$ -- got score 1. Otherwise we assign $0$ score.
+
+
+```{r distribution-params}
+sigma_matrix <- as.matrix(cov(WeightLength))
+mu <- colMeans(WeightLength)
+```
+
+```{r compute-score-noParents}
+WeightLength_centered <- scale(WeightLength, scale = FALSE)
+
+threshold_for_score_2 <- qchisq(0.75, df = 2)
+threshold_for_score_1 <- qchisq(0.95, df = 2)
+
+applyQuadratic <- function(x)
+{
+  
+  t(x) %*% solve(sigma_matrix) %*% x 
+}
+
+result_probability <- apply(WeightLength_centered, by_Row, applyQuadratic)
+scores <- ifelse(result_probability <= threshold_for_score_2, "Score 2", ifelse(result_probability < threshold_for_score_1, "Score 1", "Score 0"))
+
+WeightLength$group <- scores
+```
+
+
+```{r ellipses-data-noParents}
+ellipse_score_0 = as.data.frame(ellipse(
+  x = sigma_matrix,
+  centre = as.vector(mu),
+  level = 1
+))
+ellipse_score_1 = as.data.frame(ellipse(
+  x = sigma_matrix,
+  centre = as.vector(mu),
+  level = 0.95
+))
+ellipse_score_2 = as.data.frame(ellipse(
+  x = sigma_matrix,
+  centre = as.vector(mu),
+  level = 0.75
+))
+
+combined_data <-
+  rbind(
+    cbind(ellipse_score_0, group = "Score 0"),
+    cbind(ellipse_score_1, group = "Score 1"),
+    cbind(ellipse_score_2, group = "Score 2")
+  )
+```
+
+
+```{r bar-plot-noParents}
+count_score <- WeightLength %>% count(group)
+count_score <- count_score %>% rename(Count = n)
+
+count_plot <-ggplot(data=count_score, aes(x=group, y=Count)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Count),  vjust=1.6, color="white", size=3.5)+
+  xlab("")+
+  ggtitle("Score distribution in sample")
+```
+
+```{r ellipses-scores-noParents, fig.pos="H"}
+ellipses_plot <- ggplot() +
+  geom_path(data = combined_data, aes(Weight, Length, color = group)) +
+  geom_polygon(data = combined_data, aes(Weight, Length, color = group, fill = group), alpha = 0.25) +
+  geom_point(data = WeightLength, aes(Weight, Length, color = group), size = 0.75, shape = 4)+
+  theme(legend.position = "bottom")+
+  ggtitle("Ellipses for given score")
+```
+
+```{r display-plots-noparents, fig.cap="Score graphs"}
+grid.arrange(ellipses_plot, count_plot, nrow = 1, ncol = 2)
+```
+
+
+
+
+## 4  How many children would score zero, one, and two, respectively? Illustrate this classification on the graphs.
+
+The group distribution is presented on the graph. Indeed the shape remind the $\chi^2_2$ distribution. This would be seen better if we classified into more than 3 classes (but using same methodology i.e. $10$ classes and each class is defined by 9 elipses for levels $0.1, 0.2, \ldots, 0.9$). 
+
+
+
+## 5. Find the spectral decomposition of the estimated covariance matrix.
+
+```{r}
+WeightLength = subset(WeightLength, select = -c(group) )
+```
+
+Estimated covariance matrix $\Sigma$ = `r sigma_matrix`. Instead of calculating spectral decomposition by hand we will use *eigen* function from base package.
+
+```{r spectral-decomposition}
+spectral_decomposition <- eigen(sigma_matrix, symmetric = TRUE)
+
+V <- diag(spectral_decomposition$values)
+P <- as.matrix(spectral_decomposition$vectors)
+```
+
+$\Sigma = PVP^{T}$ where $V=$`r V` and $P=$`r P`.
+
+
+**Note** I display result with precision to 4 decimal places.
+
+## 6.  $\mathbf{P}^T \mathbf{X}$ vs $\mathbf{X}$
+
+Now we will compare plots for original data and transformed by $\mathbf{P}^T$.
+
+```{r transform-data}
+transformed_data <- as.matrix(WeightLength) %*% P
+colnames(transformed_data) <- colnames(WeightLength)
+```
+
+```{r plot-data, fig.dim = c(7, 3)}
+
+p1 <- ggplot(data = WeightLength, aes(x=Weight, y=Length))+
+  geom_point(color = "red", size = 1)
+
+p2 <- ggplot(data = as.data.frame(transformed_data), aes(x=Weight, y=Length))+
+  geom_point(color = "blue", size = 1)
+
+grid.arrange(p1,p2, nrow  = 1, ncol = 2)
+```
+
+We can see the original data are focus in ellipse and thus variable are dependent. After transformation there is no evident clusters or pattern in data. So we end up with new, independent, random variables. This confirm fact from lecture. 
+
+> The distribution of $\mathbf{P}^T(\mathbf{X}-\mu)$ is the same as the $\left(\sqrt{\lambda_1} Z_1, \ldots, \sqrt{\lambda_p} Z_p\right)$, where $Z_i$ 's are independent standard normal random variables.
+
+Here we don't centerize data before transformation, so it won't be standard normal (mean might be nonzero). But the independence property will be preserved. 
+
+\newpage
+
+# Project part 2
+
+
+## Basic statistic for ParentsWeightLength.txt dataset.
+```{r import-data}
+ParentsWeightLength <- read.delim("ParentsWeightLength.txt")
+colOrder <- c("Weight", "Length", "FatherHeight", "MotherHeight")
+ParentsWeightLength <- ParentsWeightLength[ , colOrder]
+```
+
+```{r ParentsWeightLength-statistic}
+kbl(t(colMeans(ParentsWeightLength)), caption = "Means for features") %>%
+  kable_styling(latex_options = c("HOLD_position"))
+```
+
+```{r corr-plot, fig.cap="Correlation between features", fig.dim = c(4, 3)}
+corrplot(cor(ParentsWeightLength), method="number", type = "upper")
+```
+
+We can see the correlation between parents's height and newborn weight, length isn't as high as correlation between weight and length. But for sure can have direct impact on this variables. Additional I would assume that parents's height are independent.
+
+## Normality of marginal distributions
+
+We limit this part to variables *FatherHeight* and *MotherHeight* as the *Weight* and *Length* are the same as in part one of the project.
+
+```{r check-is-same-data, include=FALSE}
+all(WeightLength$Weight == ParentsWeightLength$Weight)
+all(WeightLength$Length == ParentsWeightLength$Length)
+```
+
+```{r historams-ParentsWeightLength, fig.cap="Histogram of marginals (parents)", fig.dim=c(6,2.5)}
+# TO DO ADD LABELS AND ADJUST BINS
+p1 <- ggplot(data = ParentsWeightLength,  aes(x=FatherHeight))+
+  geom_histogram(color="grey", fill="deeppink")+
+  theme_minimal()
+
+p2 <- ggplot(data = ParentsWeightLength,  aes(x=MotherHeight))+
+  geom_histogram(color="grey", fill="darkslategrey", binwidth = 1)+
+  theme_minimal()
+
+grid.arrange(p1, p2, nrow  = 1, ncol = 2)
+```
+
+
+```{r qq-plots-ParentsWeightLength, fig.cap="Theoretical vs empirical quantiles", fig.dim=c(6,2.5)}
+# TO DO - ADD LABELS, CAPTION 
+p3 <- ggplot(data = ParentsWeightLength, aes(sample=FatherHeight)) +
+  stat_qq(color='deeppink') + 
+  stat_qq_line()+
+  ggtitle("FatherHeight")+
+  xlab("")+
+  ylab("")
+
+p4 <- ggplot(data = ParentsWeightLength, aes(sample=MotherHeight)) +
+  stat_qq(color='darkslategrey') + 
+  stat_qq_line()+
+  ggtitle("MotherHeight")+
+  xlab("")+
+  ylab("")
+
+grid.arrange(p3,p4, nrow  = 1, ncol = 2)
+```
+
+Based on above plots, again, we can assume the data comes from normal distribution. 
+
+
+## Contional distribution of Weight and Length
+
+
+Now we want to derive distribution of *Weight* and *Length* conditioned by distribution of parents's height. We use direct formula from lecture to derive parameters for this distribution.
+
+$$
+\mathbf{X}_1 \mid \mathbf{X}_2=\mathbf{x}_2 \sim \mathcal{N}_q\left(\boldsymbol{\mu}_1+\boldsymbol{\Sigma}_{12} \boldsymbol{\Sigma}_{22}^{-1}\left(\mathbf{x}_2-\boldsymbol{\mu}_2\right), \boldsymbol{\Sigma}_{11}-\boldsymbol{\Sigma}_{12} \boldsymbol{\Sigma}_{22}^{-1} \boldsymbol{\Sigma}_{21}\right)
+$$
+
+
+From the formula we can see that covariance matrix is determined only by covariance matrix of source distribution, but the mean is linear function of random vector.
+
+```{r distribution-params-parents}
+
+sigma_full <- as.matrix(cov(ParentsWeightLength))
+mu_full <- colMeans(ParentsWeightLength)
+
+mu_1 <- as.matrix(mu_full[c("Weight", "Length")])
+mu_2 <- as.matrix(mu_full[c("FatherHeight", "MotherHeight")])
+
+
+sigma_11 <- sigma_full[1:2, 1:2]
+sigma_22 <- sigma_full[3:4, 3:4]
+sigma_12 <- sigma_full[1:2, 3:4]
+sigma_21 <- sigma_full[3:4, 1:2]
+```
+
+```{r compute-params-for-conditional}
+
+cov_conditional <- sigma_11 - sigma_12 %*% solve(sigma_22) %*% sigma_21 
+
+```
+
+$$
+\left(\begin{array}{l}
+W \\
+L
+\end{array}\right) \left\lvert\,\left(\begin{array}{l}
+W_F \\
+W_M
+\end{array}\right) \sim \mathcal{N}_2\left(\left(\begin{array}{l}
+3234 \\
+49
+\end{array}\right)+\left(\begin{array}{ll}
+69.88 & 80.15 \\
+0.25 & 0.28
+\end{array}\right)\left(\begin{array}{l}
+W_F-177 \\
+W_M-167
+\end{array}\right),\left(\begin{array}{ll}
+88858 & 456.8 \\
+456.8 & 2.8
+\end{array}\right)\right)\right.
+$$
+
+
+We observe that for each pair covariance is reduced. I'm not sure we can generalize previous findings (exercise 4). I think we do, if we assume that all variables are correlated (there is no pair with 0 correlation).
+
+$\boldsymbol{\Sigma}_{12} \boldsymbol{\Sigma}_{22}^{-1} \boldsymbol{\Sigma}_{21}$ remind quadratic formula (but is not). I was trying to connect this with formula for special case in 1d ( $\sigma_X^2\left(1-\rho^2\right)$) but I can't prove it formally.
+
+
+## Elipsoid for conditional distribution.
+
+Now each observation comes from different multivariate normal (different mean but the covariance matrix is the same) distribution as mean depends on parents data. 
+
+As the conditional mean depends on value of condition I will use mean of the
+$\left(\begin{array}{l}
+W_F \\
+W_M
+\end{array}\right)$ to determine center of ellipses. Each observation belong to "their own classification ellipses" (assume there is no 2 identicall observation in parents data) so there should be no visible pattern on the plot.
+
+```{r compute-score-parents}
+compute_new_mean <- function(x)
+{
+  u1 <- mu_full[1:2]
+  u2 <- mu_full[3:4]
+  x1 <- x[1:2]
+  x2 <- x[3:4]
+  
+  conditional_mean <- u1 + sigma_12 %*% solve(sigma_22) %*% (x2 - u2)
+  returnValue(x1 - conditional_mean)
+}
+
+centeredByConditionalMean = apply(ParentsWeightLength, by_Row, compute_new_mean)
+centeredByConditionalMean <- data.frame(t(centeredByConditionalMean))
+
+applyQuadraticConditional <- function(x)
+{
+  t(x) %*% solve(cov_conditional) %*% x 
+}
+
+result_probability <- apply(centeredByConditionalMean, by_Row, applyQuadraticConditional)
+
+scores <- ifelse(result_probability <= threshold_for_score_2, "Score 2", ifelse(result_probability < threshold_for_score_1, "Score 1", "Score 0"))
+
+ParentsWeightLength$group <- scores
+```
+
+
+```{r ellipses-data-parents}
+ellipse_score_0 = as.data.frame(ellipse(
+  x = cov_conditional,
+  centre = as.vector(mu_1),
+  level = 1
+))
+
+ellipse_score_1 = as.data.frame(ellipse(
+  x = cov_conditional,
+  centre = as.vector(mu_1),
+  level = 0.95
+))
+ellipse_score_2 = as.data.frame(ellipse(
+  x = cov_conditional,
+  centre = as.vector(mu_1),
+  level = 0.75
+))
+
+combined_data <-
+  rbind(
+    cbind(ellipse_score_0, group = "Score 0"),
+    cbind(ellipse_score_1, group = "Score 1"),
+    cbind(ellipse_score_2, group = "Score 2")
+  )
+```
+
+
+```{r bar-plot-parents}
+count_score <- ParentsWeightLength %>% count(group)
+count_score <- count_score %>% rename(Count = n)
+
+count_plot <-ggplot(data=count_score, aes(x=group, y=Count)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=Count),  vjust=1.6, color="white", size=3.5)+
+  xlab("")+
+  ggtitle("Score distribution in sample")
+```
+
+```{r ellipses-scores-parents, fig.pos="H"}
+ellipses_plot <- ggplot() +
+  geom_path(data = combined_data, aes(Weight, Length, color = group)) +
+  geom_polygon(data = combined_data, aes(Weight, Length, color = group, fill = group), alpha = 0.25) +
+  geom_point(data = ParentsWeightLength, aes(Weight, Length, color = group), size = 0.75, shape = 4)+
+  theme(legend.position = "bottom")+
+  ggtitle("Ellipses for given score")
+```
+
+```{r display-plots-parents, fig.cap="Score graphs"}
+grid.arrange(ellipses_plot, count_plot, nrow = 1, ncol = 2)
+```
+
+## Scores of children
+
+The distribution of score slightly change. On the scatter plot, as we expect, the points are mixed between classes.
+
+## Classification for quite tall parents.
+
+Now we try to provide elipsses for child whose father has $185$cm and mother $178$cm.
+```{r mean-for-tall-parents}
+
+parents_params <- c(185, 178)
+mu_tall <- mu_1 + sigma_12 %*% solve(sigma_22) %*% (parents_params - mu_2)
+
+```
+The mean for conditional distribution is `r mu_tall`.
+
+```{r ellipses-for-tall-parents}
+levels <- seq(0.5, 0.95, by = 0.1)
+ellipse_scores <- list()
+
+for (level in levels) {
+  ellipse_data <- as.data.frame(ellipse(
+    x = cov_conditional,
+    centre = as.vector(mu_tall),
+    level = level
+  ))
+  ellipse_data$group <- paste("Level = ", level)
+  ellipse_scores[[length(ellipse_scores) + 1]] <- ellipse_data
+}
+
+combined_data <- do.call(rbind, ellipse_scores)
+```
+
+
+
+```{r ellipses-for-tall}
+ellipses_plot_for_tall <- ggplot() +
+  geom_path(data = combined_data, aes(Weight, Length, color = group)) +
+  geom_polygon(data = combined_data, aes(Weight, Length, color = group, fill = group), alpha = 0.25) +
+  ggtitle("Ellipses for 185cm father and 178cm mother")
+ellipses_plot_for_tall
+```
+Comparing with previous graph we can observe that area of corresponding ellipses stay the same as the length of axes depends on $\lambda_i$, $\alpha$ level and dimension. But the all ellipses are shifted to to higher values as the centrer of ellipses is determined by mean of distribution which is "greater" now.
+
+
+## Spectral decomposition 
+
+```{r spectral-decomposition-parents}
+ParentsWeightLength <- subset(ParentsWeightLength,  select = -c(group) )
+
+spectral_decomposition <- eigen(sigma_full, symmetric = TRUE)
+
+V <- diag(spectral_decomposition$values)
+P <- as.matrix(spectral_decomposition$vectors)
+```
+
+$\Sigma = PVP^{T}$ where $V=$`r V` and $P=$`r P`.
+
+## Transformed data
+
+I can't plot 4d data so I plot only relation between *Weight* and *Length*
+
+
+```{r transform-data-parents}
+transformed_data <- as.matrix(ParentsWeightLength) %*% P
+colnames(transformed_data) <- colnames(ParentsWeightLength)
+```
+
+```{r plot-data-parents, fig.dim = c(7, 3)}
+
+p1 <- ggplot(data = ParentsWeightLength, aes(x=Weight, y=Length))+
+  geom_point(color = "red", size = 1)+
+  ggtitle("Orginal data")
+
+p2 <- ggplot(data = as.data.frame(transformed_data), aes(x=Weight, y=Length))+
+  geom_point(color = "blue", size = 1)+
+  ggtitle("Transformed")
+
+grid.arrange(p1, p2, nrow  = 1, ncol = 2)
+```
+The conclusion is the same as in part one. We have other basis now, so the coordinates differ but the independence still holds.
