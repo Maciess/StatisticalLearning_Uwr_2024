@@ -1,0 +1,511 @@
+---
+title: "Statistical learning"
+subtitle: "Report 3"
+author: "Maciej Szczutko"
+date: "`r Sys.Date()`"
+output: pdf_document
+fontsize: 10pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F ,fig.pos = "H", fig.dim = c(7,3), fig.align = "center", message = F, warning = F)
+source("prettyMatrixPrinter.R")
+source("helpers.R")
+options(scipen = 1, digits = 2)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(mvtnorm)
+library(dplyr)
+library(lemon)
+library(mvtnorm)
+library(tidyr)
+library(reshape2)
+library(parallel)
+library(bigstep)
+library(glmnet)
+library(SLOPE)
+by_Row = 1
+by_Col = 2
+theme = theme(title = element_text(size = 9))
+numCores  = round(parallel::detectCores() * .70)
+```
+
+# Properties of symmetric matrices 
+
+Now we proof that the trace of symmetric matrix $X$ $tr(x) = \Sigma \lambda_i$. We use circular property of trace $\operatorname{tr}\left(\mathbf{A}^T \mathbf{B}\right)=\operatorname{tr}\left(\mathbf{A} \mathbf{B}^T\right)$. As the symmetric matrices $X$ always diagonalizable in $R$ by spectral theorem we can use spectral decomposition.
+
+$$
+\operatorname{tr}(\boldsymbol{X})=\operatorname{tr}\left(\mathbf{P} \boldsymbol{\Lambda} \mathbf{P}^T\right)=\operatorname{tr}\left(\boldsymbol{\Lambda} \mathbf{P}^T \mathbf{P}\right)=\operatorname{tr}(\boldsymbol{\Lambda})=\sum_{i=1}^n \lambda_i .
+$$
+
+# Properties of $X^TX$
+
+Now let $X$ be the matrix of dimension $n x p$ ($p\leq n$). Then $X^TX$ is always semi-positive definite. Let $z \in \mathbb{R}^n$
+
+$$
+z^T\left(X^T X\right) z= \left(z^TX^T\right) X z =(X z)^T(X z)=\|X z\|_2^2 \geq 0.
+$$
+
+Now consider case where $p>n$. Then at least one eigen value must be equal to $0$. Note the fact the $rank(X) \leq n$. The $rank(X^TX) \leq \min \{ {rank(X) , rank(X^T)}\} = n$. We conclude the $X^TX$ is not full rank so it must be singular. Also $det(X^TX)=0$ implies $0$ is eigen value for this matrices. 
+
+
+# Model selection criteria
+
+Let's remark the AIC, BIC, RIC. In general we looking for model maximazing the value of information criterium. In linear model family is equivalent to minimizing below terms:
+
+  1. AIC --  $R S S+2 \sigma^2 k$
+  2. BIC --  $R S S+\sigma^2 k \log n$
+  3. RIC --  $R S S+\sigma^2 2 k \log p$
+
+$k$ means number of parameter used in models.
+
+```{r}
+AIC <- function(RSS, k, sigma_square = 1)
+{
+  return(RSS  + 2 * sigma_square * k)
+}
+
+BIC <- function(RSS, k, n, sigma_square = 1)
+{
+  return(RSS  +  sigma_square * log(n))
+}
+
+RIC <- function(RSS, k, p, sigma_square = 1)
+{
+  return(RSS  +  sigma_square * 2 * k * log(p))
+}
+```
+
+
+```{r model-params}
+rss_list <- c(1731, 730, 49, 38.9, 32, 29, 28.5, 27.8, 27.6, 26.6)
+sample_size <- 100
+p <- 10
+```
+
+```{r find-best-model}
+AIC_score <- unlist(lapply(1:length(rss_list), function(i) {AIC(rss_list[i], i)}))
+BIC_score <- unlist(lapply(1:length(rss_list), function(i) {BIC(rss_list[i], i, sample_size)}))
+RIC_score <- unlist(lapply(1:length(rss_list), function(i) {AIC(rss_list[i], i, p)}))
+```
+
+After computing the value we can claim that the best model based on AIC is model `r which.min(AIC_score)`. For BIC model with `r which.min(BIC_score)` and RIC select model with `r which.min(RIC_score)` variables.
+
+# Assuming the orthogonal design $\left(X^{\prime} X=I\right)$ and $n=p=10000$ calculate the expected number of false discoveries for AIC, BIC and RIC, when none of the variables is really important (i.e. $\left.p_0=p\right)$
+
+## AIC
+
+In such setup the probability of I type error is $P\left(X_i\right.$ is selected $\left.\mid \beta_i=0\right)=2(1-\Phi(\sqrt{2}))=0.16$
+Then expected number of false discovery is $10000 * 0.16 = `r round(10000 * 0.16,0)`$ 
+
+## BIC
+
+$P\left(X_i\right.$ is selected $\left.\mid \beta_i=0\right)=2(1-\Phi(\sqrt{\log 1000})$
+
+Then expected number of false discovery is $10000 * 0.0024 = `r round(10000 * 2*(1-pnorm(sqrt(log(10000)))),3)`$.
+
+So the BIC is more restrictive and should make less false discoveries on average.
+
+
+## RIC
+
+$P\left(X_i\right.$ is selected $\left.\mid \beta_i=0\right)=2(1-\Phi(\sqrt{2 \log p}))$
+
+Then expected number of false discovery is $10000 * 0.000018 = `r round(10000 * 2*(1-pnorm(sqrt(2*log(10000)))), 3)`$.
+
+As was presented on lecture RIC is developed to avoid false discoveries even in large setup and keep expected value of false discovery below $1$.
+
+# When would you use AIC ? BIC ? RIC ?
+
+The AIC is equivalent for minimizing prediction error and can be use as initial step. The RIC should be use when we handle data with a large number of variables and the cost of making a mistake is large (e.g. medical industry).
+
+
+# James-Stein estimator and Prediction Error in Multiple Regression
+
+```{r read-data}
+
+data <- load("Lab3.Rdata")
+X <- as.matrix(xx)
+numOfColumns <- dim(X)[1]
+numOfObservation <- dim(X)[2]
+geanes_mean <- colMeans(X)
+X.scaled <- scale(X, center = T, scale  = apply(X, 2, sd, na.rm=T))
+X.centered <- sweep(X.scaled, 2, geanes_mean, "+") - 10
+# is it ok?
+```
+
+```{r estimate-using-only-five}
+X.first_five <- head(X.centered, n = 5)
+X.all_except_first_five <-tail(X.centered, n = numOfObservation - 5)
+```
+
+
+```{r compute-JS-correction}
+
+y_mle_based_on_5 <- colMeans(X.first_five)
+y_js_based_on_5 <- compute_js_estimator(y_mle_based_on_5, sigma_square = 1/5)
+y_js_common_based_on_5 <- compute_js_estimator_common_mu(y_mle_based_on_5, sigma_square = 1/5)
+```
+
+
+```{r compute-JS-correction-tail}
+mu <- colMeans(X.all_except_first_five)
+```
+
+```{r}
+df <- data.frame(mu_true = mu, MLE = y_mle_based_on_5, JS_Origin_shrinkage = y_js_based_on_5, JS_common_mean_shrinkage = y_js_common_based_on_5)
+df_melted <- melt(df, id.vars = "mu_true", variable.name = "Estimator", value.name = "Value")
+
+```
+```{r}
+ggplot(data = df_melted, aes(x= Value, y = mu_true, color = Estimator))+
+  geom_point(size = 1)+
+  geom_abline(aes(intercept= 0,slope= 1), color = "#142224", style = "dashed", size = 0.5)
+```
+```{r MSE-for-esitimator}
+
+mse_mle <- norm(y_mle_based_on_5 - mu, type = '2')^2
+mse_js <- norm(y_js_based_on_5 - mu, type = '2')^2
+mse_js_common <- norm(y_js_common_based_on_5 - mu, type = '2')^2
+```
+
+| $\hat{\mu}$  |  MSE |
+|---|---|
+| MLE  | $`r round(mse_mle,3)`$  |
+| JS_Origin_Shrinkage  |`r round(mse_js,3)`  |
+| JS_Common_Mean_Shrinkage  | `r round(mse_js_common,3)`  |
+
+## Prediction error estimation in linear model unde orthogonal design. 
+
+We consider linear model $Y=\beta X+\epsilon$, where $X$ is a $n \times p$ plan matrix, $\epsilon \sim N\left(0_n, \sigma^2 I_{n \times n}\right)$ is a vector representing random noise and $\beta \in R^n$ is a vector of parameters. Let $\hat{\beta}$ be the estimate of $\beta$ based on $Y$ and some subset $X_{\tilde{p}}$ of $X$ columns. We discuss some criteria of $X_{\tilde{p}}$ selection.
+
+
+Least squares estimator $\hat{\beta}_{L S}$ minimizes the error in the training sample (a.k.a. residual sum of squares) $R S S=\|Y-\hat{Y}\|^2$, where $\hat{Y}=X \hat{\beta}$ and $Y$ is the response used to fit the model. It might seem to be a good idea to pick $X_{\tilde{p}}$ resulting in smallest value of $R S S$. Indeed it doesn't make sense when comparing models with different number of columns (which we want to do), because $R S S$ never increases when we add more variables. The thing we should minimize instead is the prediclion error defined as
+$$
+P E=E\left(\hat{Y}-Y^*\right)^2,
+$$
+
+where $Y^*=X \beta+\epsilon^*$ and $\epsilon^*$ is a new noise, random and independent of that in training sample. The expression can be rewritten as follows:
+
+$\begin{gathered}P E=E\left\|X \hat{\beta}+\epsilon^*-X \beta\right\|^2=E \sum_{i=1}^n\left(X(\beta-\hat{\beta})+\epsilon^*\right)^2=E \sum_{i=1}^n\left[(X(\beta-\hat{\beta}))^2+2 X(\beta-\hat{\beta}) \epsilon^*+\left(\epsilon^*\right)^2\right]= \\ E \sum_{i=1}^n\left[(X(\beta-\hat{\beta}))^2+2 \sum_{i=1}^n E[X(\beta-\hat{\beta})] E\left[\epsilon^*\right]+\sum_{i=1}^n E\left(\epsilon^*\right)^2\right]=E \sum_{i=1}^n(X(\beta-\hat{\beta}))^2+0+n \sigma^2=E\|X(\beta-\hat{\beta})\|^2+n \sigma^2\end{gathered}$
+
+
+Stein's identity allows us to replace the first term with something called Stein's Unbiased Risk Estimator (exact form depends on the used estimator). If we use least squares estimator for parameters $\hat{\beta}=\left(X^T X\right)^{-1} X^T Y$, then $\hat{Y}=X \hat{\beta}=X\left(X^T X\right)^{-1} X^T Y=M Y$ and by Stein's identity
+
+$$
+E\|X(\beta-\hat{\beta})\|=R S S+\operatorname{tr}(M) \sigma^2-n \sigma^2 \Longrightarrow P E=R S S+\operatorname{tr}(M) \sigma^2 .
+$$
+
+Trace of $M$ is $p$ if it's full rank. If $\sigma^2$ is unknown it should be replaced with its unbiased estimator $s^2=\frac{R S S}{n-p}$. Another way of estimating the prediction error is by this formula which makes it easy to compute result of leave-one-out cross validation:
+
+
+
+$$
+\hat{P} E=\sum_{i=1}^n\left(\frac{Y_i-\hat{Y}_i}{1-M_{i, i}}\right)^2,
+$$
+
+where $M=X\left(X X^T\right)^{-1} X^T$ is a matrix of projection onto $\operatorname{Lin}(X)\left(X\right.$ denotes here $X_{\tilde{p}}$, a subset of $\left.X\right)$.
+
+
+
+```{r setup_zad1, fig.height= 2.5, fig.width= 6, cache=TRUE}
+set.seed(42)
+# Setup parameters
+n = 1000
+p = 950
+k = 5
+sig = 1
+
+cov_matrix <- matrix(0, nrow = p, ncol = p)
+diag(cov_matrix) <- sqrt(1/p)
+
+beta_true = c(rep.int(3,k), rep.int(0,p-k))
+X = rmvnorm(n = n, mean = rep(0, p), sigma = cov_matrix)
+XB <- X %*% beta_true
+# Define experiment and functions  
+get_RSS = function(true, pred){sum((true-pred)^2)}
+
+task1_single_p = function(p, X, beta_true, sig){
+  # SETUP ----------
+  Y_train = XB + rnorm(nrow(X), 0, sig)
+  Xp = X[,1:p]
+  constTerm = solve(t(Xp) %*% Xp) %*% t(Xp)
+  M = Xp %*% constTerm
+  beta_LS = constTerm %*% Y_train
+  Y_pred = Xp %*% beta_LS
+  # PREDICTION ERRORS ---------
+  RSS = sum((Y_train - Y_pred)^2)
+  PE_1 = sum((Xp %*% beta_true[1:p] - Y_pred)^2) + n*sig^2 # true PE
+  PE_2 = RSS + 2*p*sig^2                              # SURE known sigma
+  PE_3 = RSS + 2*p*(RSS/(n-p))                        # SURE unknown sigma
+  PE_4 = sum(((Y_train-Y_pred)/(1-diag(M)))^2)        # LOO CV
+  # RESULTS ---
+  return(c(p, RSS, PE_1, PE_2, PE_3, PE_4))
+}
+
+task1_all_ps = function(ps, X, beta_true, sig){
+  results <- sapply(ps, task1_single_p, X, beta_true, sig)
+  results = t(as.data.frame(results))
+  rownames(results) = NULL
+  colnames(results) = c('p','RSS', 'PE1','PE2','PE3','PE4')
+  return(results)
+}
+
+task1_replicate = function(ps, X, beta_true, sig = 1, iters = 30){
+  ## doParallel
+  cl <- makeCluster(numCores)
+  on.exit(stopCluster(cl))
+  clusterExport(cl, varlist = c("ps", "X", "beta_true", "sig", "task1_all_ps", "task1_single_p", "XB","n", "p"))
+  trials <- parLapply(cl, 1:iters, function(iter) { task1_all_ps(ps, X, beta_true, sig) })
+  return(trials)
+}
+
+average_dtfs = function(trials){
+  mean_results = array(unlist(trials), c(dim(trials[[1]]), length(trials))) %>% apply(c(1,2), mean) %>% data.frame()
+  colnames(mean_results) <- colnames(trials[[1]])
+  return(mean_results)
+}
+
+ps = c(2, 5, 10, 100, 500, 950)
+task1_gathered = task1_replicate(ps, X, beta_true)
+task1_avg = average_dtfs(task1_gathered)
+```
+
+The table below show numeric results of experiment replicated 30 times, where `PE1`, `PE2`, `PE3`, `PE4` are respectively: true prediction error, SURE with known $\sigma^2$, SURE with unknown $\sigma^2$ and LOO cross-validation estimator.
+
+```{r task1_show_avg}
+task1_avg %>% kbl(caption = "Task 1 - numeric results averaged over 30 reps (seed = 42)", digits = 2, booktabs = T) %>% kable_styling(latex_options = c("striped", "HOLD_position"))
+```
+
+From table above we can see why we can't use RSS as model selection criterion. Even if we adding dummy column we can fit better to data, but we don't bring any useful information for model. 
+
+## Boxplots (Prediction Error)
+
+```{r task1_boxplots, fig.width= 12, fig.height= 5}
+get_PE_diffs = function(df_lst, PE_col){
+  ps = unique(df_lst[[1]][,"p"])
+  r = sapply(df_lst, function(df){abs(df[,"PE1"] - df[,PE_col])}) %>% 
+    t() %>% as.data.frame()
+  colnames(r) = ps
+  valname = paste0(PE_col)
+  return(r %>% gather(key = "p", value = !!valname))
+}
+  
+PE_diffs_lst = lapply(list("PE2", "PE3", "PE4"), function(pe){get_PE_diffs(task1_gathered, pe)})
+PE_diffs_merged = data.frame(
+  p = factor(as.numeric(PE_diffs_lst[[1]]$p)),
+  PE2 = PE_diffs_lst[[1]]$PE2,
+  PE3 = PE_diffs_lst[[2]]$PE3,
+  PE4 = PE_diffs_lst[[3]]$PE4
+)
+
+PE_diffs_long = gather(PE_diffs_merged, key = estimator, value = difference, c(2,3,4))
+
+big_boxplots = ggplot(PE_diffs_long, aes(x = p, fill = estimator, y = difference)) + 
+  geom_boxplot() +
+  labs(title = "Absolute difference between estimated and true PE",
+       subtitle = "30 replications") + theme
+
+zoom_boxplots = ggplot(PE_diffs_long %>% filter(as.numeric(p) <= 5), aes(x = p, fill = estimator, y = difference)) + 
+  geom_boxplot() +
+  labs(title = "Absolute difference between estimated and true PE",
+       subtitle = "30 replications, cut to p < 950")  + theme
+
+zoom_under_500_boxplots = ggplot(PE_diffs_long %>% filter(as.numeric(p) <= 4), aes(x = p, fill = estimator, y = difference)) + 
+  geom_boxplot() +
+  labs(title = "Absolute difference between estimated and true PE",
+       subtitle = "30 replications, cut to p < 500") + theme
+
+grid_arrange_shared_legend(big_boxplots, zoom_boxplots, zoom_under_500_boxplots, ncol = 3, nrow = 1)
+```
+
+## Model selection and regularization in multiple regression models.
+
+```{r, generate-matrix}
+
+set.seed(42)
+# Setup parameters
+n = 1000
+p = 950
+k = 20
+sig = 1
+
+cov_matrix <- matrix(0, nrow = p, ncol = p)
+diag(cov_matrix) <- 1/sqrt(n)
+
+beta_true = c(rep.int(6,k), rep.int(0,p-k))
+X = rmvnorm(n = n, mean = rep(0, p), sigma = cov_matrix)
+eps <- rnorm(n)
+y <- X %*% beta_true + eps
+```
+
+We will use same setup as before. The only change is the $\beta$ vector which is now $\beta_1=\ldots=\beta_k=6, \beta_{k+1}=\ldots=\beta_p=0$ with $k=20$. Note the fact this time we make assumption we do not know nothing about the data. We will perform selection and regularization methods feeding the model with full matrix $X$ ($950$ predictors!). Following method will be used:
+
+
+## mBIC2
+
+mBIC is designed to handle sligthly different case (when the number of parameters is greater than observation), but mBIC2 should adopt well to data with unknown sparisty.
+
+We will use implementation from **bigstep** combined with stepwise selection method.
+```{r, mBiC2-selecte-model}
+data <- bigstep::prepare_data(y, X)
+model_based_mBIC2 <- bigstep::stepwise(data, crit = bigstep::mbic2)
+
+selectedVariables <-  sort(as.numeric(model_based_mBIC2$model))
+coefs <- summary(model_based_mBIC2)$coefficients[, 1]
+
+b_hat <- rep(0, length(beta_true))
+b_hat[as.numeric(model_based_mBIC2$model)] <- coefs[-c(1)]
+```
+
+```{r metrics-calculation-mBIC2}
+
+norm_square <- function(vector)
+{
+  norm(vector, type = "2")^2
+}
+
+
+vars <- rep(F, length(beta_true))
+vars[as.numeric(model_based_mBIC2$model)] <- T
+
+
+
+MSE <- norm_square(b_hat - beta_true)
+MSE2 <- norm_square(X %*% (b_hat - beta_true))
+
+FP=sum(vars & (beta_true == 0))
+FN=sum(!vars & (beta_true > 0))
+TP=sum(vars & (beta_true > 0))
+Reject=length(model_based_mBIC2$model)
+FDP <- FP/(max(Reject, 1))
+TPP <- TP/ sum(beta_true > 0)
+```
+
+
+The method choose $`r length(selectedVariables)`$ variables with indexes `r selectedVariables`. $\|\hat{\beta}-\beta\|^2$ = $`r MSE`$,
+$\|X(\hat{\beta}-\beta)\|^2$ = `r MSE2`. FDP `r FDP` and power $`r TPP`$.
+
+## Ridge with the tunning parameter selected by cross validation
+
+First we need to estimate the $\lambda$ by CV. We will use k-folds provided in **glmnet** library.
+
+```{r ridge-lambda-estimation, fig.dim=c(6,3.5)}
+
+cv_fit <- cv.glmnet(X, y, alpha = 0, standardize = F, intercept=F)
+optimal_lambda <- cv_fit$lambda.min
+plot(cv_fit)
+```
+The $\lambda$ estimated through k-folds CV is $`r round(optimal_lambda,4)`$. From plot we can see that we might as well use some other values like $exp(0)$ or lower without incorporating model performance. Note we analyse here just one particular design matrix.
+
+```{r model-ridge}
+ridge_model <- glmnet(X, y, alpha = 0, lambda = optimal_lambda, intercept=F, standardize=F)
+b_ridge <- ridge_model$beta
+```
+
+
+```{r calculate-metric-for-ridge}
+MSE_ridge <- norm_square(b_ridge - beta_true)
+MSE2_ridge <- norm_square(X %*% (b_ridge - beta_true))
+```
+$\|\hat{\beta}-\beta\|^2$ = $`r round(MSE_ridge,4)`$, $\|X(\hat{\beta}-\beta)\|^2$ = `r round(MSE2_ridge,4)`.
+
+## LASSO with the tuning parameter selected by cross-validation
+
+```{r lasso-model}
+lambdas_to_try <- 10^seq(-3, 3, length.out = 100)
+lasso_cv <- cv.glmnet(X, y, alpha = 1, lambda = lambdas_to_try, standardize = F, intercept=F)
+
+lambda_lasso <- lasso_cv$lambda.min
+lambda_lasso_1se <- lasso_cv$lambda.1se
+plot(lasso_cv)
+```
+
+```{r lasso-models}
+model_lasso <- glmnet(X, y, standardize = F, intercept=F, alpha=1, lambda = lambda_lasso)
+b_lasso <- model_lasso$beta
+
+model_lasso_1se <- glmnet(X, y, standardize = F, intercept=F, alpha=1, lambda = lambda_lasso_1se)
+b_lasso_1se <- model_lasso_1se$beta
+```
+
+```{r calculate-metric-for-lasso}
+MSE_lasso <- norm_square(b_lasso - beta_true)
+MSE2_lasso <- norm_square(X %*% (b_lasso - beta_true))
+
+MSE_lasso_1se  <- norm_square(b_lasso_1se - beta_true)
+MSE2_lasso_1se  <- norm_square(X %*% (b_lasso_1se - beta_true))
+```
+
+```{r calculate-metric-for-lasso-discoveires}
+lasso_discoveries <- get_FDP_and_TPP(b_lasso, beta_true)
+lasso_1se_discoveries <- get_FDP_and_TPP(b_lasso_1se, beta_true)
+
+```
+
+For LASSO model with lambda.min $\|\hat{\beta}-\beta\|^2$ = $`r round(MSE_lasso, 3)`$, $\|X(\hat{\beta}-\beta)\|^2$ = `r round(MSE2_lasso, 3)`.
+For LASSO model with lambda.1se $\|\hat{\beta}-\beta\|^2$ = $`r round(MSE_lasso_1se, 3)`$, $\|X(\hat{\beta}-\beta)\|^2$ = `r round(MSE2_lasso_1se, 3)`.
+
+For this case we can see the 1se version has worse score in case of square errors but lower the false discovery proportion. Also power is preserved.
+
+
+## LASSO with the tuning parameter $\lambda=\Phi^{-1}\left(1-\frac{0.1}{2 p}\right)$
+
+```{r lasso-model-with-given-lambda}
+lambda_custom <- pnorm(1-0.1/(2*p))/n
+model_lasso_custom <- glmnet(X, y, standardize = F, intercept=F, alpha=1, lambda = lambda_custom)
+b_laso_custom <- model_lasso_custom$beta
+```
+
+
+For this setup the $\lambda=`r round(lambda_custom,3)`$.
+
+```{r custom-lambda-metric}
+MSE_lasso_custom <- norm_square(b_laso_custom - beta_true)
+MSE2_lasso_custom <- norm_square(X %*% (b_laso_custom - beta_true))
+lasso_custom_discoveries <- get_FDP_and_TPP(b_laso_custom, beta_true)
+
+```
+
+
+
+## SLOPE with the $\mathrm{BH}$ sequence of the tuning parameters $\lambda_i=\Phi^{-1}\left(1-\frac{0.1 i}{2 p}\right)$
+
+No we will change canonical loss function. Instead using L2 penalty we will try to minimazie L1 sorted norm. 
+$$
+\hat{\beta}=\operatorname{argmin}_{b \in \mathbb{R}^p} \frac{1}{2}\|y-X b\|_{\ell_2}^2+\sum_{i=1}^p \lambda_i|b|_{(i)} .
+$$
+
+The estimator can be compute with SLOPE package. 
+
+```{r SLOPE, cache=TRUE}
+i_vec <- 1:p
+lambda_slope <- pnorm(1-(0.1*i_vec)/(2*p))/n
+model_slope <- SLOPE(X, y, family = "gaussian", lambda = lambda_slope, intercept = F, alpha = 1, scale = "none")
+```
+
+```{r SLOPE-metrics}
+b_slope <- model_slope$coefficients[1:p]
+MSE_SLOPE <- norm_square(b_slope - beta_true)
+MSE2_SLOPE <- norm_square(X %*% (b_slope - beta_true))
+b_slope_discoveries <- get_FDP_and_TPP(b_slope, beta_true)
+```
+
+
+
+|   | $\|\hat{\beta}-\beta\|^2$  | $\|X(\hat{\beta}-\beta)\|^2$  | FDP  | TPP  |
+|---|---|---|---|---|
+| mBIC2  | `r round(MSE, 3)`  | `r round(MSE2, 3)`  |  `r FDP` | `r TPP`  |
+| Ridge  | `r round(MSE_ridge, 3)`  | `r round(MSE2_ridge, 3)`  |  - | -  |
+| LASSO  | `r round(MSE_lasso, 3)`  | `r round(MSE2_lasso, 3)`  |  `r round(lasso_discoveries["FDP"],3)` |  `r round(lasso_discoveries["TPP"],3)` |
+| LASSO_1se  | `r round(MSE_lasso_1se, 3)`  | `r round(MSE2_lasso_1se, 3)`  | `r round(lasso_1se_discoveries["FDP"],3)`  | `r round(lasso_1se_discoveries["TPP"],3)`  |
+| LASSO_custom  | `r round(MSE_lasso_custom, 3)`  | `r round(MSE2_lasso_custom, 3)`  | `r round(lasso_custom_discoveries["FDP"],3)`  | `r round(lasso_custom_discoveries["TPP"],3)`  |
+| SLOPE  | `r round(MSE_SLOPE, 3)`  | `r round(MSE2_SLOPE, 3)`  |  `r round(b_slope_discoveries["FDP"], 3)` | `r round(b_slope_discoveries["TPP"], 3)`  |
+
+
+The mBIC2 is the best among all tested method. It was able to correctly detect all true signals from data and make no false discovery. Ridge regression fails in such high dimensional setup.
+The difference between LASSO and LASSO_1se is as mentioned before. The second version lower the FDP.
+
+I don't know what is natural interpretation of SLOPE - mainly how to interpret the sorted L1 norm. I try to get some intuition from orignal paper but Im fail. I know it has good properties like convexity but in practice I don't know when I would use this method. Also the yielded results seems to be very strange.
+
