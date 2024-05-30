@@ -1,0 +1,490 @@
+---
+title: "Statistical learning"
+subtitle: "Report 2"
+author: "Maciej Szczutko"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F ,fig.pos = "H", fig.dim = c(5,3), fig.align = "center", message = F, warning = F)
+source("prettyMatrixPrinter.R")
+source("helpers.R")
+options(scipen = 1, digits = 2)
+library(ggplot2)
+library(ellipse)
+library(gridExtra)
+library(kableExtra)
+library(corrplot)
+library(mvtnorm)
+library(dplyr)
+library(reshape2)
+by_Row = 1
+by_Col = 2
+```
+
+# $\mu$ testing in multivariate normal
+
+## The $\chi_p$ and F distribution.
+
+Let $Z_1, Z_2, \ldots$ be independent copies of a $\mathcal{N}(0,1)$ variable. Use these to define a chi-squared random variable with $p$ degrees of freedom $\chi_p^2$. Similarly, recall the definition of an $F$ distribution with $d_1$ and $d_2$ degrees of freedom $F_{d_1, d_2}$.
+
+We write some random variable has $\chi_p^2$ distribution when is define as $\sum_{i=1}^p Z_i^2$.
+
+We write some random variable  has $F_{d_1, d_2}$ distribution when is define as ratio of two, independent chi-squares distribution, scaled by their degres of freedom. Formally $X \sim F_{d_1, d_2}$  when $X=\frac{S_1 / d_1}{S_2 / d_2}$ where $S_1$ and $S_2$ are independent random variables with chi-square distributions with respective degrees of freedom $d_1$ and $d_2$.
+
+## What distribution will $F_{p, n-p}$ approximately follow for $p=4$ and $n=1000$?  
+
+
+We want to investigate case we $n$ is much larger than $p$. To do this we look closly on $F$ distribution when $d_2$ goes to $\infty$.
+
+
+$F_{p, n-p} \sim \frac{\chi^2_{(p)} / p}{\chi^2_{(n-p)} / (n-p)}$. By the LLW $\chi^2_{(n-p)} / (n-p) \to  E(\chi^2_{(1)}) = 1 \text{ when } n \to \infty$. Thus
+
+
+$\frac{\chi^2_{(p)} / p}{\chi^2_{(n-p)} / (n-p)} \to  \frac{\chi^2_{(p)}}{p} \text{ when } n \to \infty$. 
+
+We can use Jacobian formula to derive the density of  $\frac{\chi^2_{(4)}}{4}$ and verify the denisty plots.
+
+```{r density-plot, fig.dim=c(8,3.2)}
+df1 <- 4
+df2 <- 996
+
+f_values <- seq(0, 5, by = 0.01)
+density_f <- df(f_values, df1, df2)
+
+
+denisty_approx <- dchisq(4*f_values, df = df1) * df1
+
+data_f <- data.frame(x = f_values, density = density_f, distribution = "F with 4, 996")
+data_x <- data.frame(x = f_values , density = denisty_approx, distribution = "Chi-squared / 4")
+
+data <- rbind(data_f, data_x)
+
+ggplot(data, aes(x = x, y = density, color = distribution)) +
+  geom_line(aes(linetype = distribution)) +
+  scale_linetype_manual(values=c("solid", "dashed"))
+  labs(x = "Value", y = "Density", title = "Density Comparison: F-distribution and Chi-squared distribution") +
+  theme_minimal()
+
+```
+As we can see the density of $\frac{\chi^2_{(4)}}{4}$ is approximately the same as $F$ density.
+
+
+
+
+## Distirbution of statistical distance
+
+Let $X_1, . ., X_n \sim \mathcal{N}_p(\boldsymbol{\mu}, \boldsymbol{\Sigma})$. Show that $n(X-\boldsymbol{\mu})^T \boldsymbol{\Sigma}^{-1}(X-\boldsymbol{\mu})$ follows a $\chi_p^2$ distribution. 
+
+We need to show that this expression can be written as $\sum_{i=1}^p Z_i^2$. As the covariance matrix is semipositive define we can perform spectral decomposition and write. 
+
+We use following fact from previous list:
+
+  1. If $e_i$ is eigen vector for $\lambda_i$ eigen value of  $\Sigma$ then $e_i$ is eigen vector for $\frac{1}{\lambda_i}$ of $\Sigma^{-1}$
+  2. The distribution of $\mathbf{P}^T(\mathbf{X}-\mu)$ is the same as the $\left(\sqrt{\lambda_1} Z_1, \ldots, \sqrt{\lambda_p} Z_p\right)$, where $Z_i$ 's are independent standard normal random variables.
+
+$\begin{aligned} & (\mathbf{X}-\boldsymbol{\mu})^{\prime} \mathbf{\Sigma}^{-1}(\mathbf{X}-\boldsymbol{\mu})=\sum_{i=1}^p\left(1 / \lambda_i\right)(\mathbf{X}-\boldsymbol{\mu})^{\prime} \mathbf{e}_i \mathbf{e}_i^{\prime}(\mathbf{X}-\boldsymbol{\mu})=\sum_{i=1}^p\left(1 / \lambda_i\right)\left(\mathbf{e}_i^{\prime}(\mathbf{X}-\boldsymbol{\mu})\right)^2= \\ & \sum_{i=1}^p\left[\left(1 / \sqrt{\lambda_i}\right) \mathbf{e}_i^{\prime}(\mathbf{X}-\boldsymbol{\mu})\right]^2=\sum_{i=1}^p Z_i^2\end{aligned}$.
+
+## Testing $\mu$ in multivariate normal distirbution
+
+Let $X_1, . ., X_n \sim \mathcal{N}_p(\boldsymbol{\mu}, \boldsymbol{\Sigma})$. Assume we do not know either $\boldsymbol{\mu}$ or $\boldsymbol{\Sigma}$. We want to test the hypothesis $H_0: \boldsymbol{\mu}=\boldsymbol{\mu}_0$ against $H_1: \boldsymbol{\mu} \neq \boldsymbol{\mu}_0$. We introduce the Hotelling $T^2$ statistic:
+$$
+T^2:=n\left(\bar{X}-\boldsymbol{\mu}_0\right)^T \boldsymbol{S}^{-1}\left(\bar{X}-\boldsymbol{\mu}_0\right),
+$$
+where $\boldsymbol{S}$ denotes the sample covariance matrix.
+
+### $T^2$ distribution under $H_0$.
+
+From lecture we know, if $H_0$ is true, then $\frac{n-p}{(n-1) p} T^2$ is distributed as $F_{p, n-p}$. The Hotteling test reject $H_0$ when $\frac{n-p}{(n-1) p} T^2 >  F_\alpha\left(p, n-p \right)$ where $F_{1-\alpha}\left(p, n-p \right)$ denote quantile of level $1-\alpha$ from $F$ distribution with $p$ and $n-p$ degree of freedom.
+
+
+### Test behaviour under $H_0$ when observation number goes to $\infty$.
+
+
+We will use the asymptotic derived before.
+
+\[
+\frac{n-p}{(n-1) p} T^2 \text{ is distributed as } F_{p, n-p}.
+\]
+
+\[
+T^2 \sim \frac{(n-1)p}{n-p} F_{p, n-p}.
+\]
+
+Using the law of limits (as both exist), because \( \frac{(n-1) p}{n-p} \to p \) as \( n \to \infty \) and \( F_{p, n-p} \to \frac{\chi^2_{(p)}}{p} \) then \( T^2 \to p \cdot \frac{\chi^2_{(p)}}{p} = \chi^2_{(p)} \) as \( n \to \infty \).
+
+Using this asymptotic we can write $P\left[n(\overline{\mathbf{X}}-\boldsymbol{\mu})^{\prime} \mathbf{S}^{-1}(\overline{\mathbf{X}}-\boldsymbol{\mu}) \leq \chi_p^2(\alpha)\right] \doteq 1-\alpha$
+
+In fact, if we have large sample from population, we can leave normality assumption as is guarantee by CTL (see Richard A. Johnson, Dean W. Wichern - Applied Multivariate Statistical Analysis (6th Edition) 5.5)
+
+
+### Test behaviour under $H_A$ when observation number goes to $\infty$.
+
+Under $H_1, T^2$ has the noncentral $\chi_p^2$ distribution with noncentrality parameter $\lambda=T^2$, so power of above test depends on difference between $\bar{X}$ and $\mu_0$. When $n$ goes to $\infty$ then also $T^2$ goes $\infty$. Then $P\left(\frac{n-p}{(n-1) p} T^2>F_{1-\alpha}(p, n-p)\right) \rightarrow 1$ so probability of rejecting $H_0$ goes to 1.
+
+
+# Multiple Testing
+
+
+```{r, sample-vector}
+alpha <- 0.05
+x_sample <- c(1.7,1.6,3.3,2.7,-0.04,0.35,-0.5,1.0,0.7,0.8)
+
+p_values <- 2 * (1-pnorm(abs(x_sample)))
+
+bonferroni_result <- p.adjust(p_values, method = "bonferroni") < alpha
+bh_result <- p.adjust(p_values, method = "BH") < alpha
+
+true_inicates <- 4:length(x_sample)
+fdr_bonferroni <- length(which(bonferroni_result[true_inicates]))/ length(which(bonferroni_result))
+fdr_bh <- length(which(bh_result[true_inicates]))/ length(which(bh_result))
+```
+
+Random vector
+$$
+X=(1.7,1.6,3.3,2.7,-0.04,0.35,-0.5,1.0,0.7,0.8)
+$$
+
+comes from the 10 dimensional multivariate normal distribution $N(\mu, I)$.
+
+We want to test whether $$H_{0(i)}: \mu_i = 0 \quad vs \quad H_{A(i)}: \mu_i \neq 0.$$
+
+We perform 3 multiple testing procedures
+
+  1. Bonfferoni
+  
+  Bonferroni reject $H_{0(i)}$ if $p_i < \frac{\alpha}{n}$. 
+  
+  In this case the test reject hypothesis with indexes $i$: `r which(bonferroni_result)`.
+  
+  2. Benjamini-Hohberg
+  
+$$
+\begin{aligned}
+&\text { Algorithm: }  \text { Benjamini-Hochberg Procedure }\\
+&j=n \text {. }\\
+&\text { while } p_{(j)}>\frac{a}{n-j+1} \text { : do }\\
+&j=j-1\\
+&\text { end while }\\
+&\text { Reject } H_{(1)}, \ldots, H_{(j)}
+\end{aligned}
+$$
+  
+  In this case the test reject hypothesis with indexes $i$: `r which(bh_result)`.
+  
+The Bonferroni it's pretty naive in construction and demand strong signals to reject. BH is more suffistacted in construction and less conservative.
+
+
+|   | FDP |
+|---|---|
+|Bonferroni | `r fdr_bonferroni`|    
+| BH  |   `r fdr_bh`| 
+
+# BankGenuine dataset
+
+Now we will inspect BankGenuine dataset. We want to perform some analysis about new production line setting based on historical data. First we will check whether normality assumptions holds.
+
+```{r import-data}
+
+BankGenuine <- read.table("BankGenuine.txt", quote="\"", comment.char="")
+
+names(BankGenuine) <- c("Bill.Length", "Bill.Height.Left", "Bill.Heiht.Right", "Distance.To.Lower", "Distance.To.Upper", "Length.Diagonal")
+
+numOfObservation <- dim(BankGenuine)[1]
+```
+
+
+```{r dispaly-data}
+kbl(head(BankGenuine, 4), booktabs = T, caption = "BankGenuine dataset") %>%
+  kable_styling(latex_options = c("HOLD_position"))
+```
+
+
+```{r scatter-plots, fig.dim=c(8,6)}
+pairs(BankGenuine)
+```
+```{r qq-plots}
+melted_data <- melt(BankGenuine)
+
+# Create a ggplot for qqplot
+ggplot(melted_data, aes(sample = value)) +
+  geom_qq() +
+  geom_qq_line() +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal()
+
+```
+
+From the graphs above, we can assume that the data are from a multivariate normal distribution.
+
+## $\mu$ and $\Sigma$ estimators BankGenuine data
+
+
+```{r distribution-parameters}
+mu <- as.numeric(colMeans(BankGenuine))
+covariance_full <- cov(BankGenuine)
+```
+
+$\mu = (`r mu`)^T$  S= `r covariance_full`
+
+```{r corr-plot, fig.cap="Correlation between features", fig.dim = c(6, 5), include=F}
+corrplot(cor(BankGenuine), method="number", type = "upper")
+```
+
+## Verify if point lies in multidimensional ellipse
+
+To check whether new production line is aligned with previous one we can perform Hoteling test for mean measured in new data. Following code will check the production lines are "statistically identical".
+
+```{r is-in-ellipse-check-function, echo=TRUE}
+is_point_in_ellipse <- function(X, mu, sample_covariance, n, confidence_level = .05)
+{
+  statistical_distance <- n * (t(X-mu) %*% solve(sample_covariance) %*% (X-mu))
+  df_of_asymptotic <- length(mu) #dimension of distribution
+  critical_value <- qchisq(1-confidence_level, df_of_asymptotic)
+  is_in_ellipse <- statistical_distance < critical_value
+  returnValue(list("statistical_distance" = statistical_distance, "critical_value" = critical_value, "is_in_ellipse" = is_in_ellipse))
+}
+```
+
+```{r new-banknotes, include=FALSE}
+new_bill <- c(214.97, 130, 129.67, 8.3, 10.16, 141.52)
+
+is_in <- is_point_in_ellipse(mu, new_bill, covariance_full, numOfObservation)
+```
+
+The new measured mean is (`r new_bill`). The statistical distance is: `r round(is_in$statistical_distance, 4)` when critical value is `r round(is_in$critical_value, 4)`. We conclude that new mean lie outside ellipsoid.  
+
+
+## Bonferroni's confidence interval for orginal banknote. 
+
+$$
+\bar{X}_i \pm t_{n-1}\left(\alpha_i / 2\right) \sqrt{s_i^2 / n}
+$$
+Here we set $\alpha_i = \frac{\alpha}{p}$ for each coordinate. 
+
+Following function does check whether point falls into rectangular condifence region.
+
+```{r bonferroni-intervals, echo=TRUE, include=FALSE}
+is_point_in_rectangular <- function(new_point, mu, sample_covariance, n, confidence_level = .05)
+{
+  
+  bonferroni_alpha <- confidence_level / (2 * length(mu))
+  margin <- qt(1-bonferroni_alpha, n-1)  * sqrt( diag(sample_covariance) / n)
+  upper_bound <- mu + margin
+  lower_bound <- mu - margin
+  is_in_rectangular <- all( (lower_bound <= new_point) & (new_point <= upper_bound) )
+  returnValue(is_in_rectangular)
+}
+
+is_point_in_rectangular(new_bill, mu, covariance_full, numOfObservation)
+```
+
+This time we conclude that point lie in confidence intervals. 
+
+## 1d projections of confidence intervals
+
+Now we will visual inspect difference between both types of confidence intervals. 
+
+
+```{r 1d-projections}
+cov_matrix = covariance_full
+mu_vec = mu
+n = numOfObservation
+
+
+plt_base <- ggplot()
+
+segment_data <- data.frame()
+  
+for ( i in 1:6)
+{
+  p <- length(mu)
+  c <- numeric(p) 
+  c[i]<-1 #indicator vector
+  delta_t2 <- sqrt( ( (p*(n-1)) / (n-p) ) * qf(1-alpha, p, n-p)) * sqrt(cov_matrix[i,i] / n)
+  delta_bonferroni <- qt(1 - alpha/(2*p), df=n-1) * sqrt(cov_matrix[i,i]/n)
+  
+  t2_left <- mu_vec[i] - delta_t2
+  t2_right<- mu_vec[i] + delta_t2
+  
+  bonferroni_left<- mu_vec[i]- delta_bonferroni
+  bonferroni_right<- mu_vec[i]+ delta_bonferroni
+  
+  row_bonferroni <- c(bonferroni_left, bonferroni_right, i, i, "bonferroni")
+  row_t2 <- c(t2_left, t2_right, i, i, "t2")
+  segment_data <- rbind(segment_data, row_bonferroni, row_t2)
+
+}
+
+names(segment_data) <- c("x", "xend", "y", "yend", "label")
+projection_plot = ggplot() +
+geom_segment(data = segment_data, aes(x = x, y = y, xend = xend, yend = yend, color = label, size=label, alpha = label))+
+  scale_size_manual(values = c(bonferroni = 1.7, t2 = 1)) +
+ scale_alpha_manual(values = c(bonferroni = 1, t2 = 1)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+
+projection_plot
+
+```
+In general, the projection of confidence interval obtained with $T^2$ are wider because they consider relations between other variables when Bonferroni looks only on variance for given coordinates.
+
+## Better intuition coming from 2d projection
+
+```{r 2d-projections-plots, include=FALSE}
+#j > i!!
+produce_plot <- function(i,j)
+{
+  mu_i_j <- c(mu[i], mu[j])
+B <- generate_indicator_matrix(i,j)
+cov_i_j <-  B %*% cov_matrix %*% t(B)
+
+elipse_data <- as.data.frame(ellipse(
+  x = cov_i_j,
+  centre = as.vector(mu_i_j),
+  level = 0.95
+))
+
+bonferroni_confidence_intervals <- get_bonferroni_confidence_intervals(mu, cov_matrix, numOfObservation)
+
+x_label <- names(bonferroni_confidence_intervals$lower)[i]
+y_label <- names(bonferroni_confidence_intervals$lower)[j]
+
+
+ellipses_plot <- ggplot() +
+  geom_path(data = elipse_data, aes(x, y))+
+  geom_vline(xintercept = min(elipse_data$x), linetype = "dashed")+
+  geom_vline(xintercept = max(elipse_data$x), linetype = "dashed")+
+  geom_hline(yintercept = min(elipse_data$y), linetype = "dashed")+
+  geom_hline(yintercept = max(elipse_data$y), linetype = "dashed")+
+  geom_hline(yintercept = bonferroni_confidence_intervals$lower[j], linetype = "dashed", color = "red")+
+  geom_hline(yintercept = bonferroni_confidence_intervals$upper[j], linetype = "dashed", color = "red")+
+  geom_vline(xintercept = bonferroni_confidence_intervals$lower[i], linetype = "dashed", color = "red")+
+  geom_vline(xintercept = bonferroni_confidence_intervals$upper[i], linetype = "dashed", color = "red")+
+  xlab(x_label)+ylab(y_label)
+returnValue(ellipses_plot)
+}
+
+plt1 <- produce_plot(1,2)
+plt2 <- produce_plot(1,3)
+plt3 <- produce_plot(1,4)
+plt4 <- produce_plot(1,5)
+plt5 <- produce_plot(1,6)
+plt6 <- produce_plot(2,3)
+plt7 <- produce_plot(2,4)
+plt8 <- produce_plot(2,5)
+plt9 <- produce_plot(2,6)
+plt10 <- produce_plot(3,4)
+plt11 <- produce_plot(3,5)
+plt12 <- produce_plot(3,6)
+plt13 <- produce_plot(4,5)
+plt14 <- produce_plot(4,6)
+plt15 <- produce_plot(5,6)
+
+
+```
+
+```{r arrange-2d-plots, fig.dim=c(8,3)}
+
+grid.arrange(plt1, plt2, plt3, plt4, plt5, plt6, plt7, plt8, nrow = 2)
+```
+
+On 2d projections plots the difference is huge. The difference is so drastic because Bonferroni naive construction use $\alpha_i=\frac{\alpha}{6}$. For higher dimensional distributions it would be even worse. The Bonferroni looks only on components variance and scale quantile, when $T^2$ is designed to take into account the relationship between variables. I would say that Bonferroni is a correct construction, but impractical and worse for interpretation.
+
+
+```{r arrange-2d-plots-2, fig.dim=c(8,3)}
+
+grid.arrange(plt9, plt10, plt11, plt12, plt13, plt14, plt15, nrow = 2)
+```
+
+## Interference about new settings based on measurments.
+
+```{r set-m1, include=FALSE}
+mu_m1 <- c(214.99, 129.95, 129.73,8.51,9.96,141.55)
+
+
+is_point_in_rectangular(mu_m1, mu, covariance_full, numOfObservation)
+is_point_in_ellipse(mu, mu_m1, covariance_full, numOfObservation)
+```
+
+
+The new setting (called **m1**) does not fall into $T^2$ ellipsoid region and neither Bonferroni rectangular region. Most likely the setting is even worse than previous one.
+
+```{r set-m2, include=FALSE}
+mu_m2 <- c(214.9473, 129.9243, 129.6709, 8.3254, 10.0389, 141.4954)
+
+
+is_point_in_rectangular(mu_m2, mu, covariance_full, numOfObservation, 0.01)
+is_point_in_ellipse(mu, mu_m2, covariance_full, numOfObservation, 0.01)
+```
+
+
+The settings called **m2** is very close to original one. It falls into both test region criteria. I wasn't sure the confidence level $=0.95$ is accurate for such import industry branch. But even when I was a bit more restrictive and set level to $0.99$ the conclusion is the same. I would say this is correct set of parameters.
+
+
+
+# Simulation (multiple testing)
+
+Let's consider the sequence of independent random variables $X_1,...,X_p$ such that $X_i\sim N(\mu_i,1)$ and the problem of the multiple testing of the hypotheses $H0_i : \mu_i = 0$, for
+ $i \in \{1,...,p\}$. We assumme $p = 5000$ and $\alpha = 0.05$. We will use the simulations (at least 1000 replicates) to estimate FWER, FDR and the power of the Bonferroni and the Benjamini-Hochberg
+ multiple testing procedures for the following setups.
+ \begin{enumerate}
+ 
+ \item $\mu_1 = \ldots = \mu_{10} = \sqrt{2\log p},\quad \mu_{11} = \ldots = \mu_p = 0$
+ 
+ \item $\mu_1 = \ldots = \mu_{500} = \sqrt{2\log p},\quad \mu_{501} = \ldots = \mu_p = 0$
+  
+ \end{enumerate}
+
+Result presented in table. 
+
+```{r, simulation-run}
+
+p<-5000
+p_0<- 10
+alpha<-0.05
+mu_0<- sqrt(2*log(p))
+
+funsimmultest<- function(p=5000,p_0, alpha, mu_0){
+sample<- c(rnorm(p_0, mean=mu_0), rnorm(p-p_0))
+p_vals<- 2*(1- pnorm(abs(sample)))
+tests<- p.adjust(p_vals, method="bonferroni")<=alpha
+pow_bonf<- mean(tests[1:p_0])
+V_bonf <- sum(tests[(p_0+1):p])
+FDP_bonf<- V_bonf/ max(sum(tests),1)
+
+tests<- p.adjust(p_vals, method="BH")<=alpha
+pow_bh<- mean(tests[1:p_0])
+V_bh <- sum(tests[(p_0+1):p])
+FDP_bh<- V_bh/ max(sum(tests),1)
+
+c(power_bonf=pow_bonf, FWER_bonf = V_bonf>=1, FDR_bonf= FDP_bonf,
+  power_bh=pow_bh, FWER_bh = V_bh>=1, FDR_bh= FDP_bh) %>%
+  return()
+}
+
+replicate(1000,funsimmultest(p,p_0,alpha,mu_0)) %>% rowMeans()-> res_10
+
+p_0<- 500
+replicate(1000,funsimmultest(p,p_0,alpha,mu_0)) %>% rowMeans()-> res_500
+```
+
+
+
+```{r}
+result <- rbind(res_10, res_500)
+rownames(result) <- c("a)", "b)")
+kbl(result, booktabs = T, caption = "Estimated power, FWER, FDR for Benjamini-Hochberg and Bonferroni.") %>%
+  kable_styling(latex_options = c("HOLD_position"))
+```
+
+
+
+
+
+We see that Bonferroni is powerless in both setup. In such distributed signals it's expected. But it control FWR and FWER as it was designed.
+
+The Benjamini-Hochberg procedure, regardless of the case, does not control the FWER, but it does control the FDR, the value of which is less than $\alpha=0.05$. Moreover, for this procedure shows, power increases as the number of false null hypotheses increases.
+
