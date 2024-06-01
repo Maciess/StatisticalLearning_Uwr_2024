@@ -47,7 +47,7 @@ $$
 z^T\left(X^T X\right) z= \left(z^TX^T\right) X z =(X z)^T(X z)=\|X z\|_2^2 \geq 0.
 $$
 
-Now consider case where $p>n$. Then at least one eigen value must be equal to $0$. Note the fact the $rank(X) \leq n$. The $rank(X^TX) \leq \min \{ {rank(X) , rank(X^T)}\} = n$. We conclude the $X^TX$ is not full rank so it must be singular. Also $det(X^TX)=0$ implies $0$ is eigen value for this matrices. 
+Now consider case where $p>n$. Then at least one eigen value must be equal to $0$. Note the fact the $rank(X) \leq n$. The $rank(X^TX) \leq \min \{ {rank(X) , rank(X^T)}\} \leq n$. We conclude the $X^TX$ is not full rank so it must be singular. Also $det(X^TX)=0$ implies $0$ is eigen value for this matrices. 
 
 
 # Model selection criteria
@@ -121,7 +121,115 @@ As was presented on lecture RIC is developed to avoid false discoveries even in 
 The AIC is equivalent for minimizing prediction error and can be use as initial step. The RIC should be use when we handle data with a large number of variables and the cost of making a mistake is large (e.g. medical industry).
 
 
+## Ridge regression in orthogonal design
+
+Ridge regression is a type of linear regression that includes a regularization term to prevent overfitting. It is achieved by modification LOSS function. Instead of minimizing L2 norm, we minize L2 + regularization term. Formally we looking for $\beta$ minimanize below terms:
+$$
+L_{\text {ridge }}(\hat{\beta})=\|y-X \hat{\beta}\|^2+\gamma\|\hat{\beta}\|^2 .
+$$
+for some constant value $\gamma$. $\gamma$ is used to manipulate bias and variance of $\hat{\beta}$.
+
+Assuming the model is in the form 
+$$
+Y=X \beta+\varepsilon
+$$ where $X$ is orthonormal and the errors has 0 $mean$ and $\sigma^2=1$. Estimator has following distribution;
+
+$$
+\hat{\beta} \sim N\left(\frac{1}{1+\gamma} \beta, \frac{1}{(1+\gamma)^2} I\right).
+$$
+
+so the theoretical bias $\hat{\beta}_i$ is $\frac{-\gamma}{1+\gamma} \beta_i$, variance $\frac{1}{(1+\gamma)^2}$. The MSE is
+$$
+E\left(\hat{\beta}_i-\beta_i\right)^2=\frac{\gamma^2}{(1+\gamma)^2} \beta_i^2+\frac{1}{(1+\gamma)^2}
+$$
+
+We want to use $\gamma$ which minimize the mean square error.
+$$
+E\|\hat{\beta}-\beta\|^2=\frac{\gamma^2}{(1+\gamma)^2}\|\beta\|^2+\frac{p \sigma^2}{(1+\gamma)^2} .
+$$
+
+From this we we find $\gamma_{o p t}=\frac{p}{\|\beta\|^2}$. Using $\gamma_{o p t}$ in $M S E$ formula we got $M S E\left(\gamma_{o p t}\right)=\frac{p\|\beta\|^2}{p+\|\beta\|^2}$.
+
+In similar setup, if we use OLS estimator the estimator is unbiased. But the $MSE_{OLS}=p\sigma^2=p$. 
+
+# Comparing prediction error ( Ridge vs OLS)
+
+
+Assume we have dataset with 40 variables. We build model using OLS and Ridge. RSS are equal $4.5$ and $11.6$ respectively. For the ridge regression the trace of $X\left(X^{\prime} X+\gamma I\right)^{-1} X^{\prime}$ is equal to 32.
+
+$\begin{gathered}P E_{\text {RR }}=11.6+2 \sigma^2 \cdot \operatorname{tr}(M)=11.6+64 \sigma^2 \\ P E_{O L S}=4.5+2 \sigma^2 p=4.5+80 \sigma^2\end{gathered}$
+
+In this example PE from ridge should always be lower than OLS PE if $\sigma^2 > 0.44$.
+
+# LASSO
+
+Least Absolute Shrinkage and Selection Operator is another modification of OLS. We add penalty in terms of L1 norm of $\beta$
+
+$L_{\text {lasso }}(\hat{\beta})=\sum_{i=1}^n\left(y_i-x_i^{\prime} \hat{\beta}\right)^2+\lambda \sum_{j=1}^p\left|\hat{\beta}_j\right|$.
+
+The LASSO select important variables by setting some coefficients of $\beta$ to $0$. The solution of the problem might be express in terms of OLS estimator. Let us define shrinkage operator:
+$$
+\eta_\lambda(x)=\operatorname{sign} x(|x|-\lambda)_{+}
+$$
+
+The coefficients of LASSO estimator are given by $\hat{\beta}_{LASSO}=\eta_{\lambda}\left(\hat{\beta}_{OLS}\right)$. 
+
+Recall that OLS estimator is unbiased. So if true $\beta_i=0$ then  $\hat{\beta}^{OLS}_i \sim N\left(0,\sigma^2\right)$. Now we will calculate the probability of single false discovery in $\beta$ vector.
+
+$P\left(\text{ I type error }\right) = P\left(\left|\hat{\beta}_{i}^{OLS}\right|>\lambda | \beta_i=0\right) =  P\left(\frac{\left|\hat{\beta}_{i}^{OLS}\right|}{\sigma} > \frac{\lambda}{\sigma} | \beta_i=0\right) = 2\left(1-\Phi\left(\frac{\lambda}{\sigma}\right)\right)$.
+
+Assuming the number of non zero coefficients within $\beta$ is $p_0$ the expected number of false discovery is $2p_0\left(1-\Phi\left(\frac{\lambda}{\sigma}\right)\right)$ and depend on choice of the $\lambda$.
+
+# Adaptive LASSO
+
+Adaptive LASSO is extension where instead of use L1 norm we us L1-weighted norm.
+
+$L_{\text {lasso }}(\hat{\beta})=\sum_{i=1}^n\left(y_i-x_i^{\prime} \hat{\beta}\right)^2+\lambda \sum_{j=1}^p w_i \left|\hat{\beta}_j\right|$.
+
+The weights can be set to $w_i = \frac{1}{|\hat{\beta}_i^{RIDGE}|}$. This can be interpret as follow: the ridge shrink the coefficients. If the estimated coefficients from Ridge is close to $0$ then the penalty become large and likely aLASSO zero this coefficients. Roughly speaking RIDGE detect initial importance of features.
+
+This give direct instruction how to calculate aLASSO with **glmnet**. 
+
+
+
+```{r setup-adaptive-lasso}
+set.seed(42)
+n = 200
+p = 30
+k = 20
+sig = 1
+cov_matrix <- matrix(0, nrow = p, ncol = p)
+diag(cov_matrix) <- sqrt(1/n)
+
+beta_true = c(rep.int(3,k), rep.int(0,p-k))
+X = rmvnorm(n = n, mean = rep(0, p), sigma = cov_matrix)
+XB <- X %*% beta_true
+y = XB + rnorm(n)
+```
+
+```{r how-to-lasso, echo=T, include=T}
+#Calculate RIDGE estimator
+lambda_MSE_min <- cv.glmnet(X,y, alpha = 0)$lambda.min
+ridge <- glmnet(X, y, alpha = 0, lambda = lambda_MSE_min, intercept = F)
+beta_ridge <- coef(ridge)[-c(1)] # (-1 to exclude Intercept)
+adaptive_lasso <- glmnet(X,y, alpha = 1, penalty.factor =  1/abs(beta_ridge))
+```
+
+Using previous notation we can write explicitly the coeficients
+$\hat{\beta}_{LASSO}=\frac{1}{w}\eta_{\lambda}\left(w \hat{\beta}_{OLS}\right)$ where $w=(w_1,w_2, \ldots, w_p)$.
+
+**Note**: $w_i$ are positive.
+
+The ordinary least squares estimator of $\beta_1$ underr the orthognal design ( $\mathrm{X}^{\prime} \mathrm{X}=\mathrm{I}$ ) is equal to 3 and the LASSO estimator of this parameter is equal to 2. What is the value of the adaptive LASSO estimator of $\beta_1$ if we use the same value of $\lambda$ and the weight for $X_1$ is $w_1=1 / 4$.
+
+Then we find $\lambda=1$ and using above formula we calculate $4\eta_{\lambda=1}\left(\frac{1}{4} * 3\right)=0.$
+
+
 # James-Stein estimator and Prediction Error in Multiple Regression
+
+We analyze data with observation of 300 genes for 210 patients. We standarize data and later add previous mean vector. Here we will use two estimator JS estimator shrinking toward zero and shrinking to common mean. First estimator is  $\hat{\mu}_c=c_{JS} \hat{\mu}_{M L E}$ where $c_{J S}=1-\frac{(p-2) \sigma^2}{\|\hat{\mu}_{M L E}\|^2}$.
+
+The second one is  $\hat{\mu}_d=(1-d) \hat{\mu}_{M L E}+d \bar{{\mu}_{M L E}}$ where $d_{J S}=\frac{p-3}{p-1} \frac{\sigma^2}{\operatorname{Var}(\hat{\mu}_{M L E})}$.
 
 ```{r read-data}
 
@@ -163,6 +271,9 @@ ggplot(data = df_melted, aes(x= Value, y = mu_true, color = Estimator))+
   geom_point(size = 1)+
   geom_abline(aes(intercept= 0,slope= 1), color = "#142224", style = "dashed", size = 0.5)
 ```
+
+I can't infer anything from such a chart. I don't know what it would help me with in practice. 
+
 ```{r MSE-for-esitimator}
 
 mse_mle <- norm(y_mle_based_on_5 - mu, type = '2')^2
@@ -176,12 +287,17 @@ mse_js_common <- norm(y_js_common_based_on_5 - mu, type = '2')^2
 | JS_Origin_Shrinkage  |`r round(mse_js,3)`  |
 | JS_Common_Mean_Shrinkage  | `r round(mse_js_common,3)`  |
 
-## Prediction error estimation in linear model unde orthogonal design. 
+From above table we see the estimator works as were designed. We achieved lower MSE for both JS estimator. 
+
+
+**Note** $\sigma^2$ used for JS constant computation is $0.2$ because sample comes from distribution $N(0, \sqrt{\frac{1}{5}})$.
+
+## Prediction error estimation in linear model under orthogonal design. 
 
 We consider linear model $Y=\beta X+\epsilon$, where $X$ is a $n \times p$ plan matrix, $\epsilon \sim N\left(0_n, \sigma^2 I_{n \times n}\right)$ is a vector representing random noise and $\beta \in R^n$ is a vector of parameters. Let $\hat{\beta}$ be the estimate of $\beta$ based on $Y$ and some subset $X_{\tilde{p}}$ of $X$ columns. We discuss some criteria of $X_{\tilde{p}}$ selection.
 
 
-Least squares estimator $\hat{\beta}_{L S}$ minimizes the error in the training sample (a.k.a. residual sum of squares) $R S S=\|Y-\hat{Y}\|^2$, where $\hat{Y}=X \hat{\beta}$ and $Y$ is the response used to fit the model. It might seem to be a good idea to pick $X_{\tilde{p}}$ resulting in smallest value of $R S S$. Indeed it doesn't make sense when comparing models with different number of columns (which we want to do), because $R S S$ never increases when we add more variables. The thing we should minimize instead is the prediclion error defined as
+Least squares estimator $\hat{\beta}_{L S}$ minimizes the error in the training sample (a.k.a. residual sum of squares) $R S S=\|Y-\hat{Y}\|^2$, where $\hat{Y}=X \hat{\beta}$ and $Y$ is the response used to fit the model. It might seem to be a good idea to pick $X_{\tilde{p}}$ resulting in smallest value of $R S S$. Indeed it doesn't make sense when comparing models with different number of columns (which we want to do), because $R S S$ never increases when we add more variables. The thing we should minimize instead is the prediction error defined as
 $$
 P E=E\left(\hat{Y}-Y^*\right)^2,
 $$
@@ -218,7 +334,7 @@ k = 5
 sig = 1
 
 cov_matrix <- matrix(0, nrow = p, ncol = p)
-diag(cov_matrix) <- sqrt(1/p)
+diag(cov_matrix) <- sqrt(1/n)
 
 beta_true = c(rep.int(3,k), rep.int(0,p-k))
 X = rmvnorm(n = n, mean = rep(0, p), sigma = cov_matrix)
@@ -312,12 +428,12 @@ zoom_boxplots = ggplot(PE_diffs_long %>% filter(as.numeric(p) <= 5), aes(x = p, 
   labs(title = "Absolute difference between estimated and true PE",
        subtitle = "30 replications, cut to p < 950")  + theme
 
-zoom_under_500_boxplots = ggplot(PE_diffs_long %>% filter(as.numeric(p) <= 4), aes(x = p, fill = estimator, y = difference)) + 
+zoom_underr_500_boxplots = ggplot(PE_diffs_long %>% filter(as.numeric(p) <= 4), aes(x = p, fill = estimator, y = difference)) + 
   geom_boxplot() +
   labs(title = "Absolute difference between estimated and true PE",
        subtitle = "30 replications, cut to p < 500") + theme
 
-grid_arrange_shared_legend(big_boxplots, zoom_boxplots, zoom_under_500_boxplots, ncol = 3, nrow = 1)
+grid_arrange_shared_legend(big_boxplots, zoom_boxplots, zoom_underr_500_boxplots, ncol = 3, nrow = 1)
 ```
 
 ## Model selection and regularization in multiple regression models.
@@ -413,6 +529,8 @@ $\|\hat{\beta}-\beta\|^2$ = $`r round(MSE_ridge,4)`$, $\|X(\hat{\beta}-\beta)\|^
 
 ## LASSO with the tuning parameter selected by cross-validation
 
+For LASSO we will use to $\lambda$ computed via cv.glmnet. Lambda.min : $\lambda$ of minimum mean cross-validated error. lambda.1se : largest value of $\lambda$ such that error is within 1 standard error of the crossvalidated errors for lambda.min.
+
 ```{r lasso-model}
 lambdas_to_try <- 10^seq(-3, 3, length.out = 100)
 lasso_cv <- cv.glmnet(X, y, alpha = 1, lambda = lambdas_to_try, standardize = F, intercept=F)
@@ -459,7 +577,7 @@ b_laso_custom <- model_lasso_custom$beta
 ```
 
 
-For this setup the $\lambda=`r round(lambda_custom,3)`$.
+For this setup the $\lambda=`r round(lambda_custom,3)`$. The value looks like special value for Bonferroni correction. Indeed if we recall formula for flase discovery probability from exercise ($2\left(1-\Phi\left(\frac{\lambda}{\sigma}\right)\right)$) and use given $\lambda$ we got $\frac{\alpha}{p}$. So this value is use to force LASSO to use Bonferroni correction.
 
 ```{r custom-lambda-metric}
 MSE_lasso_custom <- norm_square(b_laso_custom - beta_true)
@@ -482,11 +600,11 @@ The estimator can be compute with SLOPE package.
 ```{r SLOPE, cache=TRUE}
 i_vec <- 1:p
 lambda_slope <- pnorm(1-(0.1*i_vec)/(2*p))/n
-model_slope <- SLOPE(X, y, family = "gaussian", lambda = lambda_slope, intercept = F, alpha = 1, scale = "none")
+model_slope <- SLOPE(X, y, lambda = lambda_slope, alpha=0.5/sqrt(n) ,intercept = F)
 ```
 
 ```{r SLOPE-metrics}
-b_slope <- model_slope$coefficients[1:p]
+b_slope <- coef(model_slope)
 MSE_SLOPE <- norm_square(b_slope - beta_true)
 MSE2_SLOPE <- norm_square(X %*% (b_slope - beta_true))
 b_slope_discoveries <- get_FDP_and_TPP(b_slope, beta_true)
@@ -509,3 +627,5 @@ The difference between LASSO and LASSO_1se is as mentioned before. The second ve
 
 I don't know what is natural interpretation of SLOPE - mainly how to interpret the sorted L1 norm. I try to get some intuition from orignal paper but Im fail. I know it has good properties like convexity but in practice I don't know when I would use this method. Also the yielded results seems to be very strange.
 
+
+**Note** Without replication.
