@@ -30,7 +30,7 @@ by_Row = 1
 by_Col = 2
 theme = theme(title = element_text(size = 9))
 numCores  = round(parallel::detectCores() * .70)
-
+RUN_SIMULATION <- F
 ```
 
 
@@ -125,7 +125,7 @@ perform_single_run <- function(n, p, k)
   
   knockoff_lasso <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = stat.glmnet_coefdiff) #using lasso
   selected_by_knockoff <- rep(0, length(Beta_true))
-  selected_by_knockoff[knockoff_lasso$selected] <- DISCOVERY
+  selected_by_knockoff[knockoff_lasso$selected] <- TRUE
   discoveries_knockoff_lasso <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
   
   #Knockoff #using ridge
@@ -133,7 +133,7 @@ perform_single_run <- function(n, p, k)
   
   knockoff_ridge <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = k_stat_ridge) #using lasso
   selected_by_knockoff <- rep(0, length(Beta_true))
-  selected_by_knockoff[knockoff_ridge$selected] <- DISCOVERY
+  selected_by_knockoff[knockoff_ridge$selected] <- TRUE
   discoveries_knockoff_ridge <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
   
   # Estimator distance
@@ -158,35 +158,84 @@ row <- c(MSE_OLS, MSE_ridge, MSE_lasso, MSE_mean_OLS, MSE_mean_ridge, MSE_mean_l
 
 
 ```{r for_20}
-cluster <- makeCluster(numCores)
-result_20 <- replicate(n_rep, perform_single_run(n,p, 20))
-stopCluster(cluster)
-result_20 <- data.frame(t(result_20))
-save(result_20, file = "result_20.RData")
+if(RUN_SIMULATION)
+{
+  cluster <- makeCluster(numCores)
+  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterEvalQ(cluster, library(glmnet))
+  clusterEvalQ(cluster, library(knockoff))
+  result_20 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 20)})
+  result_20 <- data.frame(t(result_20))
+  save(result_20, file = "result_20.RData")
+  stopCluster(cluster)
+}else
+{
+  load("result_20.RData")
+}
 ```
 
 ```{r for_5}
-cluster <- makeCluster(numCores)
-result_5 <- replicate(n_rep, perform_single_run(n,p, 5))
-stopCluster(cluster)
-result_5 <- data.frame(t(result_5))
-save(result_5, file = "result_5.RData")
+if(RUN_SIMULATION)
+{
+  cluster <- makeCluster(numCores)
+  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterEvalQ(cluster, library(glmnet))
+  clusterEvalQ(cluster, library(knockoff))
+  result_5 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 5)})
+  result_5 <- data.frame(t(result_5))
+  save(result_5, file = "result_5.RData")
+  stopCluster(cluster)
+}else
+{
+  #TO DO: load("result_5.RData")
+}
 ```
 
 ```{r for_50}
-cluster <- makeCluster(numCores)
-result_50 <- replicate(n_rep, perform_single_run(n,p, 50))
-stopCluster(cluster)
-result_50 <- data.frame(t(result_50))
-save(result_50, file = "result_50.RData")
+if(RUN_SIMULATION)
+{
+  cluster <- makeCluster(numCores)
+  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterEvalQ(cluster, library(glmnet))
+  clusterEvalQ(cluster, library(knockoff))
+  result_50 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 50)})
+  result_50 <- data.frame(t(result_50))
+  save(result_50, file = "result_50.RData")
+  stopCluster(cluster)
+}else
+{
+   #TO DO: load("result_50.RData")
+}
 ```
 
 
 ```{r prepare-data}
-#colnames <- c("MSE_OLS", "MSE_ridge", "MSE_lasso", "MSE_mean_OLS", "MSE_mean_ridge", "MSE_mean_lasso")
-#names(result) <- colnames
+colnames <- c("MSE_OLS", "MSE_ridge", "MSE_lasso", "MSE_mean_OLS", "MSE_mean_ridge", "MSE_mean_lasso", rep(c("FDR", "Power"), 3))
+names(result_20) <- colnames
 
-mse_observation <- result_20[, 1:6]
-fdp_tpp <- result_20[, 7:dim(result_20)[2]]
+means_5 <- data.frame(t(colMeans(result_20)))
+# TO DO: UPDATE WITH REAL DATA FOR K=5,50.
+means_20 <- data.frame(t(colMeans(result_20)))
+means_50 <- data.frame(t(colMeans(result_20)))
+
+results <- rbind(means_5, means_20, means_50)
+rownames(results) <- k
+results_mse <- results[, 1:6]
+results_discoveries <- results[, 7:dim(results)[2]]
 ```
+
+
+```{r display-mse}
+kbl(results_discoveries, booktabs = T, caption = "Estimated FDRs and powers based on 100 replication.")%>%
+  kable_styling(latex_options = c("HOLD_position"))%>%
+  add_header_above(c(" ", "Lasso" = 2, "Knockoff with Lasso" = 2, "Knockoff with Ridge" = 2))
+```
+
+```{r display-fdr-powers}
+kbl(results_mse, booktabs = T, caption = "Estimated means based on 100 replication.")%>%
+  kable_styling(latex_options = c("HOLD_position"))%>%
+  add_header_above(c(" ", "MSE" = 3, "E(MEAN)" = 3))
+  #add_header_above(c(" ", "$E|\\beta - \\hat{\\beta}|_2^2$" = 3, "$E|X(\\beta - \\hat{\\beta})|_2^2$" = 3)) why latex wont compile
+```
+
 
