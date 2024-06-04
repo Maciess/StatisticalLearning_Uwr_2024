@@ -1,0 +1,192 @@
+---
+title: "Statistical learning"
+subtitle: "Report 4"
+author: "Maciej Szczutko"
+date: "`r Sys.Date()`"
+output: pdf_document
+fontsize: 10pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F ,fig.pos = "H", fig.dim = c(7,3), fig.align = "center", message = F, warning = F)
+source("prettyMatrixPrinter.R")
+source("helpers.R")
+options(scipen = 1, digits = 2)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(mvtnorm)
+library(dplyr)
+library(lemon)
+library(mvtnorm)
+library(tidyr)
+library(reshape2)
+library(parallel)
+library(bigstep)
+library(glmnet)
+library(SLOPE)
+library(knockoff)
+by_Row = 1
+by_Col = 2
+theme = theme(title = element_text(size = 9))
+numCores  = round(parallel::detectCores() * .70)
+
+```
+
+
+# Elastic-net regression
+
+The elastic net is another extension proposed by Hui Zou and Trevor Hastie in 2005 in "Regularization and variable selection via the
+elastic net". The main motivation for this method was handle the data with highly correlated data. The LOSS functon is defined as 
+$$
+\hat{\beta}_{\text {en }}=\operatorname{argmin}_b \frac{1}{2}\|Y-X b\|_2^2+\lambda\left(\frac{1}{2}(1-\alpha)\|b\|_2^2+\alpha \sum_{i=1}^p\left|b_i\right|\right)
+$$
+to do: add caluclation.
+
+$$
+\frac{\operatorname{sgn}\left(\hat{\beta}_i^{\mathrm{OLS}}\right)}{1+\lambda(1-\alpha)}\left(\left|\hat{\beta}_i^{\mathrm{OLS}}\right|-\lambda \alpha\right)^{+}
+$$
+What would be the value of the elastic net estimator with $\lambda=1$ and $\alpha=0.5$ if $\hat{\beta}_{\mathrm{OLS}}=3 ?$
+
+According to above formula we got $\hat{B}_{en} = \frac{1}{1+1(1-0.5)}max(3-0.5, 0)=\frac{2}{3}\cdot\frac{5}{2}=\frac{5}{3}.$
+
+# Why do the LASSO, SLOPE, and elastic net perform variable selection, while ridge regression does not?
+
+Because the LASSO, SLOPE and elastic net include L1 penalty when Ridge regression has additional penalty in terms of L2 norm. Ridge shrink some less important coefficient to $0$ but not set them to 0. The other one do. This is because of the obtained estimator which perform some threshold selection.
+
+
+# Knockoff
+
+The Knockoff method is designed to handle case when some variables is highly correlated with other within data and estimate coefficient might be large. Then Lasso or Slope might not detect is not important and shouldn't be use to predict response. In nutshell idea behind knockoff is as follow. We create copy of all features. Let say we have design matrix $X$ and copy will be $\tilde{X}$. We want to preserve covariance between features but the covariance between exact copy of given feature should be as low as possible. Formally $\forall i \neq j \quad \operatorname{cov}\left(X^{i}, \widetilde{X}^{(j)}\right)=\operatorname{cov}\left(X^{i}, X^{(j)}\right)$.
+
+Then we crate matrix $D=(X,\widetilde{X})_{n x 2p}$. We using $D$ as design matrix in LASSO model.
+
+Then we need to deduce which feature are important on predicting response. We measure variable importance computing:$$
+Z_j=\left|\hat{\beta}_j(\lambda)\right|, \quad \tilde{Z}_j=\left|\hat{\beta}_{j+p}(\lambda)\right|, \quad j=1, \ldots, p
+$$
+
+**Note**: Method description from [Candes](https://web.stanford.edu/group/candes/knockoffs/outline.html).
+
+Then we compute $$
+W_j=h\left(Z_j, \tilde{Z}_j\right)=-h\left(\tilde{Z}_j, Z_j\right), \quad j=1, \ldots, p
+$$
+where the $h$ mus be anti-symmetric. $h$ is called symmetrized knockoff statistics.
+
+Finally, the knockoff procedure selects predictors with large and positive values of $W_j$, according to the adaptive threshold defined as
+$$
+T=\min \left\{t: \frac{1+\#\left\{j: W_j \leq-t\right\}}{\#\left\{j: W_j>t\right\}} \leq \alpha\right\},
+$$
+where $\alpha$ is the (desired) target FDR level.
+
+For further work we use implementation *knockoff* library developed by Stanford scientist. 
+
+# Simulation part
+
+In this simulation we generate response vector from model
+$$
+Y=X \beta+\epsilon
+$$
+where $\epsilon \sim 2 \mathcal{N}(0, I), \beta_i=10$ for $i \in\{1, \ldots, k\}, \beta_i=0$ for $i \in\{k+1, \ldots, 450\}$, and $k \in\{5,20,50\}$. The design matrix $X_{500x450}$ is orthogonal. 
+
+```{r, params}
+
+set.seed(42)
+# Setup parameters
+n = 500
+p = 450
+k = c(5, 20, 50)
+
+n_rep <- 100
+DISCOVERY <- TRUE
+```
+
+```{r single_run}
+perform_single_run <- function(n, p, k)
+{
+  X <- generate_random_orthogonal(n, p)
+  Beta_true = c(rep.int(10, k), rep.int(0, p-k))
+  y <- X%*%Beta_true + rnorm(n, mean = 0, sd = 2)
+  
+  #OLS
+  Beta_OLS <- coef( lm(y ~ X - 1) )
+  #Ridge
+  lambda_ridge <- cv.glmnet(X, y, alpha = 0, standardize = F, intercept=F)
+  model_ridge <- glmnet(X, y, standardize = F, intercept=F, alpha=0, lambda = lambda_ridge$lambda.min)
+  Beta_ridge <- coef(model_ridge)[-1]
+  #Lasso
+  lambda_lasso <- cv.glmnet(X, y, alpha = 1, standardize = F, intercept=F)
+  model_lasso <- glmnet(X, y, standardize = F, intercept=F, alpha=1, lambda = lambda_lasso$lambda.min)
+  Beta_lasso <- coef(model_lasso)[-1]
+  #Knockoff #using lasso
+  cov_matrix <- matrix(0, nrow = p, ncol = p)
+  diag(cov_matrix) <- 1/sqrt(n)
+  knockOff = function(X) create.gaussian(X, mu = rep(0, length(Beta_true)), Sigma = cov_matrix)
+  
+  
+  knockoff_lasso <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = stat.glmnet_coefdiff) #using lasso
+  selected_by_knockoff <- rep(0, length(Beta_true))
+  selected_by_knockoff[knockoff_lasso$selected] <- DISCOVERY
+  discoveries_knockoff_lasso <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
+  
+  #Knockoff #using ridge
+  k_stat_ridge = function(X, Xk, y) stat.glmnet_coefdiff(X, Xk, y, alpha = 0)
+  
+  knockoff_ridge <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = k_stat_ridge) #using lasso
+  selected_by_knockoff <- rep(0, length(Beta_true))
+  selected_by_knockoff[knockoff_ridge$selected] <- DISCOVERY
+  discoveries_knockoff_ridge <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
+  
+  # Estimator distance
+  MSE_OLS <- sum((Beta_true-Beta_OLS)^2)
+  MSE_ridge <- sum((Beta_true-Beta_ridge)^2)
+  MSE_lasso <- sum((Beta_true-Beta_lasso)^2)
+  #Mean distance 
+  XB <- X%*%Beta_true
+  
+  MSE_mean_OLS <- sum((XB-X%*%Beta_OLS)^2)
+  MSE_mean_ridge <- sum((XB-X%*%Beta_ridge)^2)
+  MSE_mean_lasso <- sum((XB-X%*%Beta_lasso)^2)
+  
+  ## FDP and TPP
+  
+  discoveries_Lasso <- get_FDP_and_TPP(beta_hat = Beta_lasso, beta_true = Beta_true)
+  
+row <- c(MSE_OLS, MSE_ridge, MSE_lasso, MSE_mean_OLS, MSE_mean_ridge, MSE_mean_lasso,
+         discoveries_Lasso, discoveries_knockoff_lasso, discoveries_knockoff_ridge)
+}
+```
+
+
+```{r for_20}
+cluster <- makeCluster(numCores)
+result_20 <- replicate(n_rep, perform_single_run(n,p, 20))
+stopCluster(cluster)
+result_20 <- data.frame(t(result_20))
+save(result_20, file = "result_20.RData")
+```
+
+```{r for_5}
+cluster <- makeCluster(numCores)
+result_5 <- replicate(n_rep, perform_single_run(n,p, 5))
+stopCluster(cluster)
+result_5 <- data.frame(t(result_5))
+save(result_5, file = "result_5.RData")
+```
+
+```{r for_50}
+cluster <- makeCluster(numCores)
+result_50 <- replicate(n_rep, perform_single_run(n,p, 50))
+stopCluster(cluster)
+result_50 <- data.frame(t(result_50))
+save(result_50, file = "result_50.RData")
+```
+
+
+```{r prepare-data}
+#colnames <- c("MSE_OLS", "MSE_ridge", "MSE_lasso", "MSE_mean_OLS", "MSE_mean_ridge", "MSE_mean_lasso")
+#names(result) <- colnames
+
+mse_observation <- result_20[, 1:6]
+fdp_tpp <- result_20[, 7:dim(result_20)[2]]
+```
+
