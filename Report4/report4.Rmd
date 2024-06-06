@@ -187,7 +187,7 @@ if(RUN_SIMULATION)
   stopCluster(cluster)
 }else
 {
-  #TO DO: load("result_5.RData")
+   load("result_5.RData")
 }
 ```
 
@@ -204,7 +204,7 @@ if(RUN_SIMULATION)
   stopCluster(cluster)
 }else
 {
-   #TO DO: load("result_50.RData")
+   load("result_50.RData")
 }
 ```
 
@@ -212,11 +212,13 @@ if(RUN_SIMULATION)
 ```{r prepare-data}
 colnames <- c("MSE_OLS", "MSE_ridge", "MSE_lasso", "MSE_mean_OLS", "MSE_mean_ridge", "MSE_mean_lasso", rep(c("FDR", "Power"), 3))
 names(result_20) <- colnames
+names(result_50) <- colnames
+names(result_5) <- colnames
 
-means_5 <- data.frame(t(colMeans(result_20)))
+means_5 <- data.frame(t(colMeans(result_5)))
 # TO DO: UPDATE WITH REAL DATA FOR K=5,50.
 means_20 <- data.frame(t(colMeans(result_20)))
-means_50 <- data.frame(t(colMeans(result_20)))
+means_50 <- data.frame(t(colMeans(result_50)))
 
 results <- rbind(means_5, means_20, means_50)
 rownames(results) <- k
