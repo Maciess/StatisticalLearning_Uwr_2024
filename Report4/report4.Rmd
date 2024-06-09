@@ -41,19 +41,94 @@ elastic net". The main motivation for this method was handle the data with highl
 $$
 \hat{\beta}_{\text {en }}=\operatorname{argmin}_b \frac{1}{2}\|Y-X b\|_2^2+\lambda\left(\frac{1}{2}(1-\alpha)\|b\|_2^2+\alpha \sum_{i=1}^p\left|b_i\right|\right)
 $$
-to do: add caluclation.
+Assume orthonormal design we can derived explicit formula for $\hat{\beta}_{\text {en }}$.
 
 $$
-\frac{\operatorname{sgn}\left(\hat{\beta}_i^{\mathrm{OLS}}\right)}{1+\lambda(1-\alpha)}\left(\left|\hat{\beta}_i^{\mathrm{OLS}}\right|-\lambda \alpha\right)^{+}
+\begin{aligned}
+\beta^{\mathrm{EN}} & =\arg \min \sum \frac{1}{2}\|Y-X \beta\|_2^2+\lambda\left(\frac{1-\alpha}{2}\|b\|_2^2+\alpha \sum_{i=1}^p\left|b_i\right|\right) \\
+f(b) & =\frac{1}{2}(Y-X b)^T(Y-X b)+\lambda\left(\frac{1-\alpha}{2} b^T b+\alpha \sum_{i=1}^p\left|b_i\right|\right)= \\
+& =\frac{1}{2}\left(Y^T Y-2 Y^T X b+b^T X^T X b\right)+\frac{\lambda(1-\alpha)}{2} b^T b+\lambda \alpha \sum_{i=1}^p\left|b_i\right|= \\
+& =b^T b\left(\frac{1}{2}+\frac{\lambda(1-\alpha)}{2}\right)+\lambda \alpha \sum_{i=1}^p\left|b_i\right|-Y^T X b+\frac{1}{2} Y^T Y= \\
+& =\sum_{i=1}^p\left[b_i^2\left(\frac{1}{2}(1+\lambda(1-\alpha))\right)+\lambda \alpha\left|b_i\right|-\hat{\beta}_i^{\mathrm{OLS}} b_i\right]+\text { const }
+\end{aligned}
 $$
+$$
+\frac{\partial f\left(b_i\right)}{\partial b_i}=b_i(1+\lambda(1-\alpha))+\lambda \operatorname{\alpha sgn}\left(b_i\right)-\hat{\beta}_i^{\mathrm{OLS}}=0
+$$
+
+When we analyse the above equation considering $sgn(\beta_i)$ we end with explicit formula
+
+$$
+\hat{\beta}_{\text {en }} = \frac{\operatorname{sgn}\left(\hat{\beta}_i^{\mathrm{OLS}}\right)}{1+\lambda(1-\alpha)}\left(\left|\hat{\beta}_i^{\mathrm{OLS}}\right|-\lambda \alpha\right)^{+}.
+$$
+
+## Number of discoveries
+
+Recall that elastic net make discovery if $\left|\widehat\beta_i^{OLS}\right|>\lambda \alpha$. Then if
+
+$$
+\begin{aligned}
+& \alpha=0,\left|\widehat\beta_i^{OLS}\right|>0 \equiv \text { RIDGE }, \\
+& \alpha=1,\left|\widehat\beta_i^{OLS}\right|>\lambda=\text { LASSO.}
+\end{aligned}
+$$
+In case when EN reduce to ridge we don't perform any selection (0 shrinkage only), but if $\alpha=1$ we do. From this we conclude number of discoveries should decrease as $\alpha$ grows.
+
+Now we can derived formula for single false discovery (similar way as in report 3.).
+
+$P\left(\text{ I type error }\right) = P\left(\left|\hat{\beta}_{i}^{OLS}\right|>\alpha\lambda | \beta_i=0\right) =  P\left(\frac{\left|\hat{\beta}_{i}^{OLS}\right|}{\sigma} > \frac{\alpha\lambda}{\sigma} | \beta_i=0\right) = 2\left(1-\Phi\left(\frac{\alpha\lambda}{\sigma}\right)\right)$.
+
+With square design matrix $n=1000$ and if we assume $p_0=950$ and $\lambda=2, \sigma^2=1$ the average number of false discoveries is
+$950 \cdot 2(1-\Phi(2\alpha)$.
+
+```{r}
+df <- data.frame(alpha <- seq(0, 1, by = 0.01), 
+                 expected_false_discoveries = 950* 2*(1-pnorm(2*alpha)))
+
+ggplot(data = df, aes(x=alpha, y= expected_false_discoveries))+
+  geom_point(size=0.5, color = "blue")+
+  ggtitle("Plot of expected number of false discoveries")
+```
+The above plot confirm previous conclusion. $\alpha$ grows, EN make less discoveries and intuitively less the false ones.
+
+
+We can perform similar calculation under assumptions that $\beta_i \neq 0$. As OLS is unbiased and normally distributed we need to just subtract true $\beta_i$ value. Probability of single correct decision is:
+$$1-\Phi\left(\frac{\lambda \alpha-\beta_i}{\sigma}\right)+\Phi\left(\frac{-\lambda\alpha-\beta_i}{\sigma}\right).$$ 
+So for $\beta_i=3$ we have $1-\Phi(2\alpha-3)+\Phi(-2\alpha-3)$.
+
+
 What would be the value of the elastic net estimator with $\lambda=1$ and $\alpha=0.5$ if $\hat{\beta}_{\mathrm{OLS}}=3 ?$
 
 According to above formula we got $\hat{B}_{en} = \frac{1}{1+1(1-0.5)}max(3-0.5, 0)=\frac{2}{3}\cdot\frac{5}{2}=\frac{5}{3}.$
+
 
 # Why do the LASSO, SLOPE, and elastic net perform variable selection, while ridge regression does not?
 
 Because the LASSO, SLOPE and elastic net include L1 penalty when Ridge regression has additional penalty in terms of L2 norm. Ridge shrink some less important coefficient to $0$ but not set them to 0. The other one do. This is because of the obtained estimator which perform some threshold selection.
 
+# Identifiability condition for LASSO
+
+As we already know the LASSO selects the variables for which $|\widehat{\beta}_i^{OLS}| > \lambda$. The identifiability condition is criterium that says when LASSO select correct model (reject all null predictors, and do not reject any true predictor). I know there exist theorem that says the model is correctly identified for any $\lambda>0$ only if $\min _{i \in I}\left|\beta_i\right|$ is sufficiently large. The $I$ represent indices for true predictors within data. I have not been able to get direct formulas based on $\beta$ and statistical properties of $X$. 
+
+Irrepresentability conditon give use direct probability bound for correct model identification in terms of $X,\beta$ and with respect to supremum norm. When
+$$
+\left\|X_I^{\prime} X_I\left(X_I^{\prime} X_I\right)^{-1} S\left(\beta_l\right)\right\|_{\infty}>1
+$$
+then probability of correct model selection by LASSO is less than $0.5$. Demanding to above term be lower or equal $1$ is needed to correct model idendification by LASSO with high probability. [Bogdan preprint 1.2](http://math.uni.wroc.pl/~mbogdan/Preprints/revision_sign_recovery_SJS.pdf)
+
+
+# SLOPE
+
+SLOPE which is "Sorted L-One Penalized Estimation" is regularization with new norm penalty.
+
+$$
+\hat{\beta}=\operatorname{argmin}_{b \in \mathbb{R}^\rho} \frac{1}{2}\|y-X b\|_{\ell_2}^2+\sum_{i=1}^p \lambda_i|b|_{(i)}
+$$
+
+As we can see the main difference is the sorting coefficients in order to their magnitudes (in descending order). Also each coordinate has associated weight $\lambda_i$. The sequence  $\{\lambda_i\}_1^p$ must satisfy $$
+\lambda_1 \geq \ldots \geq \lambda_p \geq 0.
+$$
+The interpretation is as follow.  We can adjust penalty according to feature importance and we assume the importance is greater if coefficient is greater. Greater importance should also result in a greater penalty. If we set all $\lambda_i=c$ then we end up with ordinary LASSO. 
 
 # Knockoff
 
@@ -80,17 +155,38 @@ where $\alpha$ is the (desired) target FDR level.
 
 For further work we use implementation *knockoff* library developed by Stanford scientist. 
 
+## Example of selection based on calculated W statistic
+
+Assume we applied knockoff procedure and obtain vector $W=(8, -4, -2, 2, -1.2, -0.6, 10, 12, 1, 5, 6, 7).$ We want to control FDR on level $q=0.4$.
+To find the proper threshold we can just evaluate expression $\frac{1+\#\left\{j: W_j(\lambda) \leq-t\right\}}{\#\left\{j: W_j(\lambda) \geq t\right\}}$ for $t=W'$ where $W'$ is sorted absolute values of $W$.
+  
+
+```{r knockoff_statistic_selection_plot, fig.dim=c(6,3.8) ,fig.cap = "Threshold selection for Knockoff"}
+W <-  c(8, -4, -2, 2, -1.2, -0.6, 10, 12, 1, 5, 6, 7)
+w_copy <- sort(abs(W))
+threshold <- w_copy[6]
+plot(1:length(W), W)
+abline(h=threshold, col="blue", lty=2, lwd=.8) 
+abline(h=-threshold, col="blue", lty=2, lwd=.8)
+```
+
+Iterating over $W'$ we find that setting $\hat{t}(\lambda) =`r threshold`$* give us proportion $\frac{1+1}{6}=\frac{1}{3} < 0.4$. Now we select variable only above (positive) threshold which is $\widehat{\mathcal{S}(\lambda)}=\left\{j: W_j(\lambda) \geq \hat{t}(\lambda)\right\} = \left\{ 1,7,8,10,11,12 \right\}$.
+
+**Note** * The threshold should be lower by definition, but this simplify procedure and the results are equivalent.
+
 # Simulation part
 
 In this simulation we generate response vector from model
 $$
 Y=X \beta+\epsilon
 $$
-where $\epsilon \sim 2 \mathcal{N}(0, I), \beta_i=10$ for $i \in\{1, \ldots, k\}, \beta_i=0$ for $i \in\{k+1, \ldots, 450\}$, and $k \in\{5,20,50\}$. The design matrix $X_{500x450}$ is orthogonal. 
+where $\epsilon \sim 2 \mathcal{N}(0, I), \beta_i=10$ for $i \in\{1, \ldots, k\}, \beta_i=0$ for $i \in\{k+1, \ldots, 450\}$, and $k \in\{5,20,50\}$. The design matrix $X_{500x450}$ is orthonormal. 
+
+We fit OLS, LASSO, Ridge and perform Knockoff procedure based on coefficients from LASSO and from Ridge (FDR=$0.2$). We check the following statistic $E|\beta-\hat{\beta}|_2^2$, $E|X(\beta-\hat{\beta})|_2^2$. Also we want to compare FDR for ordinary LASSO and both Knockoff version.
+
+The all models use lambda.1se instead lambda.min.
 
 ```{r, params}
-
-set.seed(42)
 # Setup parameters
 n = 500
 p = 450
@@ -101,29 +197,32 @@ DISCOVERY <- TRUE
 ```
 
 ```{r single_run}
-perform_single_run <- function(n, p, k)
+set.seed(42)
+X <- generate_random_orthogonal(n, p)
+
+perform_single_run <- function(X, k_arg)
 {
-  X <- generate_random_orthogonal(n, p)
-  Beta_true = c(rep.int(10, k), rep.int(0, p-k))
-  y <- X%*%Beta_true + rnorm(n, mean = 0, sd = 2)
+  n_arg <- dim(X)[1]
+  p_arg <- dim(X)[2]
+  Beta_true = c(rep.int(10, k_arg), rep.int(0, p_arg-k_arg))
+  y <- X%*%Beta_true + rnorm(n_arg, mean = 0, sd = 2)
   
   #OLS
   Beta_OLS <- coef( lm(y ~ X - 1) )
   #Ridge
-  lambda_ridge <- cv.glmnet(X, y, alpha = 0, standardize = F, intercept=F)
-  model_ridge <- glmnet(X, y, standardize = F, intercept=F, alpha=0, lambda = lambda_ridge$lambda.min)
-  Beta_ridge <- coef(model_ridge)[-1]
+  lambda_ridge <- cv.glmnet(X, y, alpha = 0, standardize = F)
+  
+  Beta_ridge <- coef(lambda_ridge, s="lambda.1se")[-1]
   #Lasso
-  lambda_lasso <- cv.glmnet(X, y, alpha = 1, standardize = F, intercept=F)
-  model_lasso <- glmnet(X, y, standardize = F, intercept=F, alpha=1, lambda = lambda_lasso$lambda.min)
-  Beta_lasso <- coef(model_lasso)[-1]
+  lambda_lasso <- cv.glmnet(X, y, alpha = 1, standardize = F)
+  
+  Beta_lasso <- coef(lambda_lasso,s="lambda.1se")[-1]
   #Knockoff #using lasso
-  cov_matrix <- matrix(0, nrow = p, ncol = p)
-  diag(cov_matrix) <- 1/sqrt(n)
+  cov_matrix <- diag(1/n_arg, p_arg)
+  
   knockOff = function(X) create.gaussian(X, mu = rep(0, length(Beta_true)), Sigma = cov_matrix)
   
-  
-  knockoff_lasso <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = stat.glmnet_coefdiff) #using lasso
+  knockoff_lasso <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = stat.glmnet_coefdiff, fdr = 0.2) #using lasso
   selected_by_knockoff <- rep(0, length(Beta_true))
   selected_by_knockoff[knockoff_lasso$selected] <- TRUE
   discoveries_knockoff_lasso <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
@@ -131,7 +230,7 @@ perform_single_run <- function(n, p, k)
   #Knockoff #using ridge
   k_stat_ridge = function(X, Xk, y) stat.glmnet_coefdiff(X, Xk, y, alpha = 0)
   
-  knockoff_ridge <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = k_stat_ridge) #using lasso
+  knockoff_ridge <-  knockoff.filter(X, y, knockoffs = knockOff, statistic = k_stat_ridge, fdr = 0.2) #using lasso
   selected_by_knockoff <- rep(0, length(Beta_true))
   selected_by_knockoff[knockoff_ridge$selected] <- TRUE
   discoveries_knockoff_ridge <- get_FDP_and_TPP(beta_hat = selected_by_knockoff, beta_true = Beta_true)
@@ -148,7 +247,6 @@ perform_single_run <- function(n, p, k)
   MSE_mean_lasso <- sum((XB-X%*%Beta_lasso)^2)
   
   ## FDP and TPP
-  
   discoveries_Lasso <- get_FDP_and_TPP(beta_hat = Beta_lasso, beta_true = Beta_true)
   
 row <- c(MSE_OLS, MSE_ridge, MSE_lasso, MSE_mean_OLS, MSE_mean_ridge, MSE_mean_lasso,
@@ -161,10 +259,10 @@ row <- c(MSE_OLS, MSE_ridge, MSE_lasso, MSE_mean_OLS, MSE_mean_ridge, MSE_mean_l
 if(RUN_SIMULATION)
 {
   cluster <- makeCluster(numCores)
-  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterExport(cluster, varlist = c("n_rep", "X", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
   clusterEvalQ(cluster, library(glmnet))
   clusterEvalQ(cluster, library(knockoff))
-  result_20 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 20)})
+  result_20 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(X, 20)})
   result_20 <- data.frame(t(result_20))
   save(result_20, file = "result_20.RData")
   stopCluster(cluster)
@@ -177,11 +275,12 @@ if(RUN_SIMULATION)
 ```{r for_5}
 if(RUN_SIMULATION)
 {
+
   cluster <- makeCluster(numCores)
-  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterExport(cluster, varlist = c("n_rep", "X", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
   clusterEvalQ(cluster, library(glmnet))
   clusterEvalQ(cluster, library(knockoff))
-  result_5 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 5)})
+  result_5 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(X, 5)})
   result_5 <- data.frame(t(result_5))
   save(result_5, file = "result_5.RData")
   stopCluster(cluster)
@@ -192,13 +291,14 @@ if(RUN_SIMULATION)
 ```
 
 ```{r for_50}
+
 if(RUN_SIMULATION)
 {
   cluster <- makeCluster(numCores)
-  clusterExport(cluster, varlist = c("n_rep", "n", "p", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
+  clusterExport(cluster, varlist = c("n_rep", "X", "perform_single_run", "generate_random_orthogonal", "get_FDP_and_TPP"))
   clusterEvalQ(cluster, library(glmnet))
   clusterEvalQ(cluster, library(knockoff))
-  result_50 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(n,p, 50)})
+  result_50 <- parSapply(cluster, 1:n_rep, function(i,...) {perform_single_run(X, 50)})
   result_50 <- data.frame(t(result_50))
   save(result_50, file = "result_50.RData")
   stopCluster(cluster)
@@ -211,12 +311,11 @@ if(RUN_SIMULATION)
 
 ```{r prepare-data}
 colnames <- c("MSE_OLS", "MSE_ridge", "MSE_lasso", "MSE_mean_OLS", "MSE_mean_ridge", "MSE_mean_lasso", rep(c("FDR", "Power"), 3))
+names(result_5) <- colnames
 names(result_20) <- colnames
 names(result_50) <- colnames
-names(result_5) <- colnames
 
 means_5 <- data.frame(t(colMeans(result_5)))
-# TO DO: UPDATE WITH REAL DATA FOR K=5,50.
 means_20 <- data.frame(t(colMeans(result_20)))
 means_50 <- data.frame(t(colMeans(result_50)))
 
@@ -228,16 +327,19 @@ results_discoveries <- results[, 7:dim(results)[2]]
 
 
 ```{r display-mse}
-kbl(results_discoveries, booktabs = T, caption = "Estimated FDRs and powers based on 100 replication.")%>%
+kbl(results_discoveries, booktabs = T, caption = "Estimated FDR and power based on 100 replication.")%>%
   kable_styling(latex_options = c("HOLD_position"))%>%
   add_header_above(c(" ", "Lasso" = 2, "Knockoff with Lasso" = 2, "Knockoff with Ridge" = 2))
 ```
 
 ```{r display-fdr-powers}
-kbl(results_mse, booktabs = T, caption = "Estimated means based on 100 replication.")%>%
+kbl(results_mse, booktabs = T, caption = "Estimated mean based on 100 replication.")%>%
   kable_styling(latex_options = c("HOLD_position"))%>%
-  add_header_above(c(" ", "MSE" = 3, "E(MEAN)" = 3))
-  #add_header_above(c(" ", "$E|\\beta - \\hat{\\beta}|_2^2$" = 3, "$E|X(\\beta - \\hat{\\beta})|_2^2$" = 3)) why latex wont compile
+  #add_header_above(c(" ", "MSE" = 3, "E(MEAN)" = 3))
+  add_header_above(c(" ", "$E|\\beta - \\hat{\\beta}|_2^2$" = 3, "$E|X(\\beta - \\hat{\\beta})|_2^2$" = 3))
 ```
 
 
+## Results
+
+We can see that LASSO always have full power, but the $FDR$ increase when we decrease the sparsity of data. For $k=50$ over half of discoveries are false. Same time both version of Knockoff almost always correctly identify all true predictors. They control $FDR$ on given $q=0.2$. The small deviation for case with $k=20$ in knockoff based on Ridge is acceptable from my point of view. 
