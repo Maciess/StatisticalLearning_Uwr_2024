@@ -327,16 +327,17 @@ results_discoveries <- results[, 7:dim(results)[2]]
 
 
 ```{r display-mse}
-kbl(results_discoveries, booktabs = T, caption = "Estimated FDR and power based on 100 replication.")%>%
+kbl(results_discoveries, booktabs = T, caption = "Estimated FDR and power based on 100 replication.", col.names = rep(c("FDR", "Power"), 3))%>%
   kable_styling(latex_options = c("HOLD_position"))%>%
   add_header_above(c(" ", "Lasso" = 2, "Knockoff with Lasso" = 2, "Knockoff with Ridge" = 2))
 ```
 
+
 ```{r display-fdr-powers}
-kbl(results_mse, booktabs = T, caption = "Estimated mean based on 100 replication.")%>%
+kbl(results_mse, booktabs = T, caption = "Estimated mean based on 100 replication.", col.names = 
+      c("OLS", "Ridge", "LASSO", "OLS", "Ridge", "LASSO"))%>%
   kable_styling(latex_options = c("HOLD_position"))%>%
-  #add_header_above(c(" ", "MSE" = 3, "E(MEAN)" = 3))
-  add_header_above(c(" ", "$E|\\beta - \\hat{\\beta}|_2^2$" = 3, "$E|X(\\beta - \\hat{\\beta})|_2^2$" = 3))
+  add_header_above(c(" ", "$E|\\\\beta - \\\\hat{\\\\beta}|_2^2$" = 3, "$E|X(\\\\beta - \\\\hat{\\\\beta})|_2^2$" = 3), escape = F)
 ```
 
 
